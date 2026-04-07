@@ -155,39 +155,3 @@ Invoke-RestMethod -Method Post -Uri "http://localhost:3003/mint" -ContentType "a
 Invoke-RestMethod -Method Get -Uri "http://localhost:3003/read?tokenId=0"
 curl.exe -i "http://localhost:3003/read?tokenId=999"
 ```
-
-## Troubleshooting
-
-### `EADDRINUSE` on startup
-
-Another process is already using your port.
-
-Options:
-
-- Change `PORT` to a free port (for example `3003`)
-- Stop the existing process on that port
-
-Find process on port (PowerShell):
-
-```powershell
-Get-NetTCPConnection -LocalPort 3003 -State Listen | Select-Object LocalAddress,LocalPort,OwningProcess
-```
-
-Stop process:
-
-```powershell
-Stop-Process -Id <PID> -Force
-```
-
-### Frontend shows HTML/error parsing instead of JSON
-
-- Ensure you open `http://localhost:<PORT>/index.html` (not `file://...`)
-- Ensure backend is running on the same `<PORT>`
-
-### Read fails for some token IDs
-
-Unminted IDs are expected to fail contract `ownerOf` checks. The API now reports this as a clean `404` not-found response.
-
-## Security Note
-
-This project is for local development/demo. Do not expose real private keys in production. For production deployment, use a secure key management strategy (for example managed identities, vaults, or signer services).
