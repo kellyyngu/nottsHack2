@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "compile": "npx hardhat compile",
-    "deploy:localhost": "npx hardhat run deploy.js --network localhost"
+    "deploy:localhost": "npx hardhat run deploy.js --network localhost",
+    "deploy:node": "node deploy.js"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.0.7",
