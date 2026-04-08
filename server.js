@@ -137,3 +137,33 @@ app.get("/health", (_req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
+app.get("/catalog", async (req, res) => {
+  try {
+    const total = 10; // TEMP fallback if no totalMinted()
+
+    const items = [];
+
+    for (let i = 0; i < total; i++) {
+      try {
+        const meta = await contract.getBagMetadata(i);
+        const owner = await contract.ownerOf(i);
+
+        items.push({
+          tokenId: i,
+          bagName: meta.bagName,
+          condition: meta.condition,
+          material: meta.material,
+          imageURI: meta.imageURI || "",
+          owner
+        });
+      } catch {
+        break;
+      }
+    }
+
+    res.json({ items });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});

@@ -1,229 +1,162 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Luxury Passport NFT</title>
+  <title>Luxury NFT Marketplace</title>
   <style>
     body {
-      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-      background: #f5f7fb;
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: #fff;
       margin: 0;
-      padding: 24px;
-      color: #1f2937;
     }
 
-    .card {
-      max-width: 520px;
-      margin: 0 auto;
-      background: #ffffff;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
+    header {
       padding: 20px;
-      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+      text-align: center;
+      background: #1e293b;
+      font-size: 24px;
+      font-weight: bold;
     }
 
-    h1 {
-      margin-top: 0;
-      font-size: 1.4rem;
+    .controls {
+      padding: 20px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
     }
 
-    label {
-      display: block;
-      margin: 12px 0 6px;
-      font-weight: 600;
-      font-size: 0.95rem;
-    }
-
-    input {
-      width: 100%;
+    input, select, button {
       padding: 10px;
-      border: 1px solid #d1d5db;
       border-radius: 8px;
-      font-size: 0.95rem;
-      box-sizing: border-box;
+      border: none;
     }
 
     button {
-      margin-top: 16px;
-      width: 100%;
-      border: 0;
-      border-radius: 8px;
-      padding: 11px;
-      background: #2563eb;
-      color: #fff;
-      font-size: 1rem;
+      background: #6366f1;
+      color: white;
       cursor: pointer;
     }
 
-    button:disabled {
-      opacity: 0.7;
-      cursor: not-allowed;
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 20px;
+      padding: 20px;
     }
 
-    .hint {
-      margin-top: 12px;
-      font-size: 0.85rem;
-      color: #4b5563;
+    .card {
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 15px;
     }
 
-    .divider {
-      margin: 20px 0 14px;
-      border-top: 1px solid #e5e7eb;
-    }
-
-    #status {
-      margin-top: 14px;
-      padding: 10px;
+    img {
+      width: 100%;
       border-radius: 8px;
-      display: none;
-      font-size: 0.92rem;
     }
 
-    #status.ok {
-      display: block;
-      background: #ecfdf5;
-      border: 1px solid #10b981;
-      color: #065f46;
+    .btns {
+      display: flex;
+      gap: 5px;
+      margin-top: 10px;
     }
 
-    #status.err {
-      display: block;
-      background: #fef2f2;
-      border: 1px solid #ef4444;
-      color: #991b1b;
-    }
-
-    #viewResult {
-      margin-top: 12px;
-      padding: 10px;
-      border-radius: 8px;
-      border: 1px solid #d1d5db;
-      background: #f9fafb;
-      white-space: pre-wrap;
-      font-size: 0.9rem;
-      display: none;
+    .btns button {
+      flex: 1;
     }
   </style>
 </head>
+
 <body>
-  <div class="card">
-    <h1>Passport NFT Minter</h1>
 
-    <label for="bagName">Bag Name</label>
-    <input id="bagName" placeholder="Lady Dior" />
+<header>Luxury NFT Marketplace</header>
 
-    <label for="condition">Condition</label>
-    <input id="condition" placeholder="Excellent" />
+<div class="controls">
+  <input id="search" placeholder="Search bag..." />
+  <select id="condition">
+    <option value="">All Conditions</option>
+    <option>New</option>
+    <option>Used</option>
+  </select>
+  <select id="material">
+    <option value="">All Materials</option>
+    <option>Leather</option>
+    <option>Canvas</option>
+  </select>
+  <button onclick="applyFilters()">Filter</button>
+  <button onclick="loadCatalog()">Refresh</button>
+</div>
 
-    <label for="material">Material</label>
-    <input id="material" placeholder="Lambskin" />
+<div id="grid" class="grid"></div>
 
-    <button id="mintBtn">Mint NFT</button>
+<script>
+let items = [];
 
-    <p class="hint">This page sends a POST request to <code>/mint</code></p>
-    <div id="status"></div>
+async function loadCatalog() {
+  const res = await fetch("/catalog");
+  const data = await res.json();
+  items = data.items || [];
+  render(items);
+}
 
-    <div class="divider"></div>
+function render(list) {
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
 
-    <h1 style="font-size: 1.2rem; margin-bottom: 8px;">View NFT</h1>
-    <label for="tokenId">tokenId</label>
-    <input id="tokenId" type="number" min="0" placeholder="0" />
-    <button id="viewBtn">View NFT</button>
-    <div id="viewResult"></div>
-  </div>
+  list.forEach(item => {
+    const card = document.createElement("div");
+    card.className = "card";
 
-  <script type="module">
-    const statusEl = document.getElementById("status");
-    const mintBtn = document.getElementById("mintBtn");
-    const viewBtn = document.getElementById("viewBtn");
-    const viewResultEl = document.getElementById("viewResult");
+    card.innerHTML = `
+      <img src="${item.imageURI || 'https://via.placeholder.com/300'}" />
+      <h3>${item.bagName}</h3>
+      <p>ID: ${item.tokenId}</p>
+      <p>Condition: ${item.condition}</p>
+      <p>Material: ${item.material}</p>
+      <p>Owner: ${item.owner}</p>
 
-    function showStatus(message, isError = false) {
-      statusEl.textContent = message;
-      statusEl.className = isError ? "err" : "ok";
-    }
+      <div class="btns">
+        <button onclick="buy(${item.tokenId})">Buy</button>
+        <button onclick="sell(${item.tokenId})">Sell</button>
+        <button onclick="transfer(${item.tokenId})">Transfer</button>
+      </div>
+    `;
 
-    mintBtn.addEventListener("click", async () => {
-      const bagName = document.getElementById("bagName").value.trim();
-      const condition = document.getElementById("condition").value.trim();
-      const material = document.getElementById("material").value.trim();
+    grid.appendChild(card);
+  });
+}
 
-      if (!bagName || !condition || !material) {
-        showStatus("Please fill all fields.", true);
-        return;
-      }
+function applyFilters() {
+  const s = document.getElementById("search").value.toLowerCase();
+  const c = document.getElementById("condition").value;
+  const m = document.getElementById("material").value;
 
-      mintBtn.disabled = true;
-      showStatus("Minting via backend...");
+  const filtered = items.filter(i =>
+    i.bagName.toLowerCase().includes(s) &&
+    (!c || i.condition === c) &&
+    (!m || i.material === m)
+  );
 
-      try {
-        const res = await fetch("/mint", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bagName, condition, material })
-        });
+  render(filtered);
+}
 
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-          throw new Error(data.error || "Mint request failed");
-        }
+function buy(id) {
+  alert("Buy NFT " + id + " (connect to smart contract later)");
+}
 
-        const mintedTokenPart = data.tokenId !== null && data.tokenId !== undefined
-          ? ` | tokenId: ${data.tokenId}`
-          : "";
-        showStatus(`Success! Minted. Tx hash: ${data.txHash}${mintedTokenPart}`);
-      } catch (err) {
-        showStatus(`Mint failed: ${err.message || String(err)}`, true);
-      } finally {
-        mintBtn.disabled = false;
-      }
-    });
+function sell(id) {
+  alert("Sell NFT " + id);
+}
 
-    viewBtn.addEventListener("click", async () => {
-      const tokenIdValue = document.getElementById("tokenId").value.trim();
-      if (tokenIdValue === "") {
-        viewResultEl.style.display = "block";
-        viewResultEl.textContent = "Please enter tokenId.";
-        return;
-      }
+function transfer(id) {
+  const to = prompt("Enter address:");
+  alert(`Transfer ${id} → ${to}`);
+}
 
-      const tokenId = Number(tokenIdValue);
-      if (!Number.isInteger(tokenId) || tokenId < 0) {
-        viewResultEl.style.display = "block";
-        viewResultEl.textContent = "tokenId must be a non-negative integer.";
-        return;
-      }
+loadCatalog();
+</script>
 
-      viewBtn.disabled = true;
-      viewResultEl.style.display = "block";
-      viewResultEl.textContent = "Loading...";
-
-      try {
-        const res = await fetch(`/read?tokenId=${encodeURIComponent(tokenId)}`);
-        const data = await res.json();
-
-        if (res.status === 404) {
-          viewResultEl.textContent = `Token ${tokenId} is not minted yet.`;
-          return;
-        }
-
-        if (!res.ok || !data.success) {
-          throw new Error(data.error || "Read request failed");
-        }
-
-        viewResultEl.textContent = [
-          `Owner: ${data.owner}`,
-          `bagName: ${data.metadata.bagName}`,
-          `condition: ${data.metadata.condition}`,
-          `material: ${data.metadata.material}`
-        ].join("\n");
-      } catch (err) {
-        viewResultEl.textContent = `Read failed: ${err.message || String(err)}`;
-      } finally {
-        viewBtn.disabled = false;
-      }
-    });
-  </script>
 </body>
 </html>
