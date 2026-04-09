@@ -2,214 +2,82 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Luxury NFT Marketplace</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #0f172a;
-      color: #fff;
-      margin: 0;
-    }
-
-    header {
-      padding: 20px;
-      text-align: center;
-      background: #1e293b;
-      font-size: 24px;
-      font-weight: bold;
-    }
-
-    .controls {
-      padding: 20px;
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      justify-content: center;
-    }
-
-    input, select, button {
-      padding: 10px;
-      border-radius: 8px;
-      border: none;
-    }
-
-    button {
-      background: #6366f1;
-      color: white;
-      cursor: pointer;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-      gap: 20px;
-      padding: 20px;
-    }
-
-    .card {
-      background: #1e293b;
-      border-radius: 12px;
-      padding: 15px;
-    }
-
-    img {
-      width: 100%;
-      border-radius: 8px;
-    }
-
-    .btns {
-      display: flex;
-      gap: 5px;
-      margin-top: 10px;
-    }
-
-    .btns button {
-      flex: 1;
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>#BAGS</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
+<body class="home-body">
 
-<body>
+  <header class="site-topbar">
+    <div class="site-brand-wrap">
+      <div class="site-brand">L&L</div>
+      <div class="site-subtitle">Luxury Passport Marketplace</div>
+    </div>
 
-<header>Luxury NFT Marketplace</header>
+    <nav class="site-nav">
+      <a href="index.html" class="active">HOME</a>
+      <a href="marketplace.html">MARKETPLACE</a>
+      <a href="mint.html">SELL</a>
+    </nav>
+  </header>
 
-<div class="controls">
-  <input id="search" placeholder="Search bag..." />
-  <input id="mintBagName" placeholder="Mint bagName" />
-  <select id="mintCondition">
-    <option>New</option>
-    <option selected>Used</option>
-  </select>
-  <select id="mintMaterial">
-    <option>Leather</option>
-    <option selected>Canvas</option>
-  </select>
-  <button onclick="mintNFT()">Mint NFT</button>
-  <select id="condition">
-    <option value="">All Conditions</option>
-    <option>New</option>
-    <option>Used</option>
-  </select>
-  <select id="material">
-    <option value="">All Materials</option>
-    <option>Leather</option>
-    <option>Canvas</option>
-  </select>
-  <button onclick="applyFilters()">Filter</button>
-  <button onclick="loadCatalog()">Refresh</button>
-</div>
+  <section class="home-title-band">
+    <h1>#BAGS</h1>
+  </section>
 
-<div id="grid" class="grid"></div>
-<div id="status" style="text-align:center;padding:10px;color:#fff"></div>
+  <section class="hero-image-section">
+    <div class="hero-overlay">
+      <p class="hero-tagline">
+        A secondhand marketplace for reselling pre-loved bags.
+      </p>
 
-<script>
-let items = [];
-
-async function loadCatalog() {
-  const res = await fetch("/catalog");
-  const data = await res.json();
-  items = data.items || [];
-  render(items);
-}
-
-async function mintNFT() {
-  const bagName = document.getElementById('mintBagName').value.trim();
-  const condition = document.getElementById('mintCondition').value;
-  const material = document.getElementById('mintMaterial').value;
-  const status = document.getElementById('status');
-
-  if (!bagName) {
-    status.textContent = 'Please enter a bagName to mint.';
-    return;
-  }
-
-  status.textContent = 'Minting...';
-
-  try {
-    const res = await fetch('/mint', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bagName, condition, material })
-    });
-
-    const ct = (res.headers.get('content-type') || '').toLowerCase();
-    const bodyText = await res.text();
-
-    if (!res.ok) {
-      if (ct.includes('application/json')) {
-        const json = JSON.parse(bodyText || '{}');
-        throw new Error(json.error || 'mint failed');
-      }
-      throw new Error('Server error: ' + (bodyText || res.statusText));
-    }
-
-    const data = ct.includes('application/json') ? JSON.parse(bodyText) : { success: true };
-    if (!data.success) throw new Error(data.error || 'mint failed');
-
-    status.textContent = `Minted token ${data.tokenId} (tx ${data.txHash})`;
-    // refresh catalog
-    await loadCatalog();
-  } catch (err) {
-    status.textContent = 'Mint failed: ' + (err.message || err);
-  }
-}
-
-function render(list) {
-  const grid = document.getElementById("grid");
-  grid.innerHTML = "";
-
-  list.forEach(item => {
-    const card = document.createElement("div");
-    card.className = "card";
-
-    card.innerHTML = `
-      <img src="${item.imageURI || 'https://via.placeholder.com/300'}" />
-      <h3>${item.bagName}</h3>
-      <p>ID: ${item.tokenId}</p>
-      <p>Condition: ${item.condition}</p>
-      <p>Material: ${item.material}</p>
-      <p>Owner: ${item.owner}</p>
-
-      <div class="btns">
-        <button onclick="buy(${item.tokenId})">Buy</button>
-        <button onclick="sell(${item.tokenId})">Sell</button>
-        <button onclick="transfer(${item.tokenId})">Transfer</button>
+      <div class="hero-actions">
+        <a href="marketplace.html" class="hero-btn">BROWSE</a>
+        <a href="mint.html" class="hero-btn">SELL</a>
       </div>
-    `;
+    </div>
+  </section>
 
-    grid.appendChild(card);
-  });
-}
+  <section id="about" class="about-section">
+    <h2>ABOUT US</h2>
 
-function applyFilters() {
-  const s = document.getElementById("search").value.toLowerCase();
-  const c = document.getElementById("condition").value;
-  const m = document.getElementById("material").value;
+    <div class="about-grid">
+      <div class="about-card about-text">
+        <p>
+          Luxury Passport helps users browse, verify, and trade pre-loved luxury
+          bags with confidence. Each item can be linked to an NFT-based digital
+          passport for traceability, provenance, and future resale trust.
+        </p>
+      </div>
 
-  const filtered = items.filter(i =>
-    i.bagName.toLowerCase().includes(s) &&
-    (!c || i.condition === c) &&
-    (!m || i.material === m)
-  );
+      <div class="about-card about-image">
+        <img
+          src="download (22).jpg"
+          alt="Luxury product editorial"
+        />
+      </div>
 
-  render(filtered);
-}
+      <div class="about-card about-image">
+        <img
+          src="bag.jpg"
+          alt="Luxury interior editorial"
+        />
+      </div>
 
-function buy(id) {
-  alert("Buy NFT " + id + " (connect to smart contract later)");
-}
+      <div class="about-card about-text">
+        <p>
+          Our marketplace is designed for a safer resale experience. Sellers can
+          mint a digital record, while buyers can explore condition, materials,
+          and ownership-linked metadata in one elegant interface.
+        </p>
+      </div>
+    </div>
+  </section>
 
-function sell(id) {
-  alert("Sell NFT " + id);
-}
-
-function transfer(id) {
-  const to = prompt("Enter address:");
-  alert(`Transfer ${id} → ${to}`);
-}
-
-loadCatalog();
-</script>
+  <footer class="home-footer">
+    <div class="footer-brand">L&L</div>
+    <div class="footer-contact">CONTACT US :</div>
+  </footer>
 
 </body>
 </html>

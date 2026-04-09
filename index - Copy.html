@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Luxury Passport NFT</title>
+  <style>
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: #f5f7fb;
+      margin: 0;
+      padding: 24px;
+      color: #1f2937;
+    }
+
+    .card {
+      max-width: 520px;
+      margin: 0 auto;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 1.4rem;
+    }
+
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      box-sizing: border-box;
+    }
+
+    button {
+      margin-top: 16px;
+      width: 100%;
+      border: 0;
+      border-radius: 8px;
+      padding: 11px;
+      background: #2563eb;
+      color: #fff;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    .hint {
+      margin-top: 12px;
+      font-size: 0.85rem;
+      color: #4b5563;
+    }
+
+    .divider {
+      margin: 20px 0 14px;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    #status {
+      margin-top: 14px;
+      padding: 10px;
+      border-radius: 8px;
+      display: none;
+      font-size: 0.92rem;
+    }
+
+    #status.ok {
+      display: block;
+      background: #ecfdf5;
+      border: 1px solid #10b981;
+      color: #065f46;
+    }
+
+    #status.err {
+      display: block;
+      background: #fef2f2;
+      border: 1px solid #ef4444;
+      color: #991b1b;
+    }
+
+    #viewResult {
+      margin-top: 12px;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background: #f9fafb;
+      white-space: pre-wrap;
+      font-size: 0.9rem;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Passport NFT Minter</h1>
+
+    <label for="bagName">Bag Name</label>
+    <input id="bagName" placeholder="Lady Dior" />
+
+    <label for="condition">Condition</label>
+    <input id="condition" placeholder="Excellent" />
+
+    <label for="material">Material</label>
+    <input id="material" placeholder="Lambskin" />
+
+    <button id="mintBtn">Mint NFT</button>
+
+    <p class="hint">This page sends a POST request to <code>/mint</code></p>
+    <div id="status"></div>
+
+    <div class="divider"></div>
+
+    <h1 style="font-size: 1.2rem; margin-bottom: 8px;">View NFT</h1>
+    <label for="tokenId">tokenId</label>
+    <input id="tokenId" type="number" min="0" placeholder="0" />
+    <button id="viewBtn">View NFT</button>
+    <div id="viewResult"></div>
+  </div>
+
+  <script type="module">
+    const statusEl = document.getElementById("status");
+    const mintBtn = document.getElementById("mintBtn");
+    const viewBtn = document.getElementById("viewBtn");
+    const viewResultEl = document.getElementById("viewResult");
+
+    function showStatus(message, isError = false) {
+      statusEl.textContent = message;
+      statusEl.className = isError ? "err" : "ok";
+    }
+
+    mintBtn.addEventListener("click", async () => {
+      const bagName = document.getElementById("bagName").value.trim();
+      const condition = document.getElementById("condition").value.trim();
+      const material = document.getElementById("material").value.trim();
+
+      if (!bagName || !condition || !material) {
+        showStatus("Please fill all fields.", true);
+        return;
+      }
+
+      mintBtn.disabled = true;
+      showStatus("Minting via backend...");
+
+      try {
+        const res = await fetch("/mint", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bagName, condition, material })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Mint request failed");
+        }
+
+        const mintedTokenPart = data.tokenId !== null && data.tokenId !== undefined
+          ? ` | tokenId: ${data.tokenId}`
+          : "";
+        showStatus(`Success! Minted. Tx hash: ${data.txHash}${mintedTokenPart}`);
+      } catch (err) {
+        showStatus(`Mint failed: ${err.message || String(err)}`, true);
+      } finally {
+        mintBtn.disabled = false;
+      }
+    });
+
+    viewBtn.addEventListener("click", async () => {
+      const tokenIdValue = document.getElementById("tokenId").value.trim();
+      if (tokenIdValue === "") {
+        viewResultEl.style.display = "block";
+        viewResultEl.textContent = "Please enter tokenId.";
+        return;
+      }
+
+      const tokenId = Number(tokenIdValue);
+      if (!Number.isInteger(tokenId) || tokenId < 0) {
+        viewResultEl.style.display = "block";
+        viewResultEl.textContent = "tokenId must be a non-negative integer.";
+        return;
+      }
+
+      viewBtn.disabled = true;
+      viewResultEl.style.display = "block";
+      viewResultEl.textContent = "Loading...";
+
+      try {
+        const res = await fetch(`/read?tokenId=${encodeURIComponent(tokenId)}`);
+        const data = await res.json();
+
+        if (res.status === 404) {
+          viewResultEl.textContent = `Token ${tokenId} is not minted yet.`;
+          return;
+        }
+
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Read request failed");
+        }
+
+        viewResultEl.textContent = [
+          `Owner: ${data.owner}`,
+          `bagName: ${data.metadata.bagName}`,
+          `condition: ${data.metadata.condition}`,
+          `material: ${data.metadata.material}`
+        ].join("\n");
+      } catch (err) {
+        viewResultEl.textContent = `Read failed: ${err.message || String(err)}`;
+      } finally {
+        viewBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sell Your Bag</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="mint-body">
+  <header class="site-topbar">
+    <div class="site-brand-wrap">
+      <div class="site-brand">L&L</div>
+      <div class="site-subtitle">Luxury Passport Marketplace</div>
+    </div>
+
+    <nav class="site-nav">
+      <a href="index.html".html">HOME</a>
+      <a href="marketplace.html">MARKETPLACE</a>
+      <a href="mint.html" class="active">SELL</a>
+    </nav>
+  </header>
+
+  <main class="page-frame">
+    <h1 class="page-title">SELL</h1>
+    <p class="page-intro">
+      Create a digital passport for your pre-loved luxury item. Enter the bag
+      details below and mint its on-chain identity.
+    </p>
+
+    <div class="mint-layout">
+      <section class="editorial-card mint-panel">
+        <h2>Mint Passport</h2>
+
+        <label class="form-label" for="bagName">BAG NAME</label>
+        <input class="form-input" id="bagName" placeholder="Lady Dior" />
+
+        <label class="form-label" for="condition">CONDITION</label>
+        <input class="form-input" id="condition" placeholder="Excellent" />
+
+        <label class="form-label" for="material">MATERIAL</label>
+        <input class="form-input" id="material" placeholder="Lambskin" />
+
+        <button id="mintBtn" class="primary-pill-btn">MINT NFT</button>
+
+        <p class="form-note">
+          This page sends a POST request to <code>/mint</code>.
+        </p>
+
+        <div id="status" class="status-box"></div>
+
+        <div class="mint-divider"></div>
+
+        <h2>View NFT</h2>
+
+        <label class="form-label" for="tokenId">TOKEN ID</label>
+        <input class="form-input" id="tokenId" type="number" min="0" placeholder="0" />
+
+        <button id="viewBtn" class="secondary-pill-btn">VIEW NFT</button>
+
+        <div id="viewResult" class="view-result-box"></div>
+      </section>
+
+      <aside class="editorial-card preview-panel">
+        <div class="preview-visual">
+          <img
+            src="https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=1200&q=80"
+            alt="Luxury bag preview"
+          />
+        </div>
+
+        <div class="preview-copy">
+          <h2>Editorial Preview</h2>
+          <p>
+            This selling flow is designed to feel premium and simple. Later,
+            your AI layer can replace manual entry by analyzing uploaded bag
+            photos and automatically filling condition and material before minting.
+          </p>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script type="module">
+    const statusEl = document.getElementById("status");
+    const mintBtn = document.getElementById("mintBtn");
+    const viewBtn = document.getElementById("viewBtn");
+    const viewResultEl = document.getElementById("viewResult");
+
+    function showStatus(message, isError = false) {
+      statusEl.textContent = message;
+      statusEl.className = isError ? "status-box err" : "status-box ok";
+    }
+
+    mintBtn.addEventListener("click", async () => {
+      const bagName = document.getElementById("bagName").value.trim();
+      const condition = document.getElementById("condition").value.trim();
+      const material = document.getElementById("material").value.trim();
+
+      if (!bagName || !condition || !material) {
+        showStatus("Please fill all fields.", true);
+        return;
+      }
+
+      mintBtn.disabled = true;
+      showStatus("Minting via backend...");
+
+      try {
+        const res = await fetch("/mint", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bagName, condition, material })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Mint request failed");
+        }
+
+        const mintedTokenPart =
+          data.tokenId !== null && data.tokenId !== undefined
+            ? ` | tokenId: ${data.tokenId}`
+            : "";
+
+        showStatus(`Success! Minted. Tx hash: ${data.txHash}${mintedTokenPart}`);
+
+        document.getElementById("bagName").value = "";
+        document.getElementById("condition").value = "";
+        document.getElementById("material").value = "";
+      } catch (err) {
+        showStatus(`Mint failed: ${err.message || String(err)}`, true);
+      } finally {
+        mintBtn.disabled = false;
+      }
+    });
+
+    viewBtn.addEventListener("click", async () => {
+      const tokenIdValue = document.getElementById("tokenId").value.trim();
+
+      if (tokenIdValue === "") {
+        viewResultEl.className = "view-result-box show";
+        viewResultEl.textContent = "Please enter tokenId.";
+        return;
+      }
+
+      const tokenId = Number(tokenIdValue);
+      if (!Number.isInteger(tokenId) || tokenId < 0) {
+        viewResultEl.className = "view-result-box show";
+        viewResultEl.textContent = "tokenId must be a non-negative integer.";
+        return;
+      }
+
+      viewBtn.disabled = true;
+      viewResultEl.className = "view-result-box show";
+      viewResultEl.textContent = "Loading...";
+
+      try {
+        const res = await fetch(`/read?tokenId=${encodeURIComponent(tokenId)}`);
+        const data = await res.json();
+
+        if (res.status === 404) {
+          viewResultEl.textContent = `Token ${tokenId} is not minted yet.`;
+          return;
+        }
+
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Read request failed");
+        }
+
+        viewResultEl.textContent = [
+          `Owner: ${data.owner}`,
+          `bagName: ${data.metadata.bagName}`,
+          `condition: ${data.metadata.condition}`,
+          `material: ${data.metadata.material}`
+        ].join("\n");
+      } catch (err) {
+        viewResultEl.textContent = `Read failed: ${err.message || String(err)}`;
+      } finally {
+        viewBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

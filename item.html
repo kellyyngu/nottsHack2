@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NFT Details</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="item-body">
+  <header class="site-topbar">
+    <div class="site-brand-wrap">
+      <div class="site-brand">L&L</div>
+      <div class="site-subtitle">Luxury Passport Marketplace</div>
+    </div>
+
+    <nav class="site-nav">
+      <a href="home.html">HOME</a>
+      <a href="index.html" class="active">MARKETPLACE</a>
+      <a href="mint.html">SELL</a>
+    </nav>
+  </header>
+
+  <main class="page-frame">
+    <div class="item-layout">
+      <section class="item-image-wrap editorial-card">
+        <img
+          id="itemImage"
+          src="https://via.placeholder.com/900x900?text=Luxury+Bag"
+          alt="NFT item"
+        />
+      </section>
+
+      <section class="editorial-card item-info">
+        <div class="item-kicker">VERIFIED LUXURY ITEM</div>
+        <h1 id="itemName" class="item-name">Loading...</h1>
+        <p id="itemIntro" class="page-intro">
+          A digital passport view for your NFT-backed luxury item.
+        </p>
+
+        <div class="item-meta-list">
+          <div class="item-meta-row"><strong>Token ID</strong><span id="metaTokenId">-</span></div>
+          <div class="item-meta-row"><strong>Condition</strong><span id="metaCondition">-</span></div>
+          <div class="item-meta-row"><strong>Material</strong><span id="metaMaterial">-</span></div>
+          <div class="item-meta-row"><strong>Owner</strong><span id="metaOwner">-</span></div>
+        </div>
+
+        <div class="item-actions">
+          <a href="index.html" class="hero-btn">BACK TO MARKETPLACE</a>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const tokenId = params.get("id");
+
+    async function loadItem() {
+      if (!tokenId) {
+        document.getElementById("itemName").textContent = "No token selected";
+        return;
+      }
+
+      try {
+        const res = await fetch(`/read?tokenId=${encodeURIComponent(tokenId)}`);
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Failed to load item");
+        }
+
+        document.getElementById("itemName").textContent = data.metadata.bagName || "Untitled Bag";
+        document.getElementById("metaTokenId").textContent = tokenId;
+        document.getElementById("metaCondition").textContent = data.metadata.condition || "-";
+        document.getElementById("metaMaterial").textContent = data.metadata.material || "-";
+        document.getElementById("metaOwner").textContent = data.owner || "-";
+      } catch (err) {
+        document.getElementById("itemName").textContent = "Failed to load item";
+        document.getElementById("itemIntro").textContent = err.message || String(err);
+      }
+    }
+
+    loadItem();
+  </script>
+</body>
+</html>
