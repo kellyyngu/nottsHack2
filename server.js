@@ -8,6 +8,21 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static("."));
 
+// Return JSON on body parse errors (invalid JSON) instead of HTML error page
+app.use((err, req, res, next) => {
+  // body-parser JSON errors come through here; normalize to JSON response
+  if (err) {
+    const isBadJson = err.type === 'entity.parse.failed' ||
+      err instanceof SyntaxError ||
+      (err.status === 400 && typeof err.message === 'string' && err.message.toLowerCase().includes('json'));
+
+    if (isBadJson) {
+      return res.status(400).json({ success: false, error: 'Invalid JSON body' });
+    }
+  }
+  next(err);
+});
+
 function getConfig(requirePrivateKey = true) {
   const rpcUrl = process.env.RPC_URL || "http://127.0.0.1:8545";
   const contractAddress = process.env.CONTRACT_ADDRESS;
@@ -140,30 +155,62 @@ app.listen(PORT, () => {
 
 app.get("/catalog", async (req, res) => {
   try {
-    const total = 10; // TEMP fallback if no totalMinted()
+    const { rpcUrl, contractAddress } = getConfig(false);
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+
+    const ABI = [
+      "function ownerOf(uint256 tokenId) view returns (address)",
+      "function getBagMetadata(uint256) view returns (tuple(string bagName,string condition,string material))",
+      "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
+    ];
+
+    const contract = new ethers.Contract(contractAddress, ABI, provider);
+    const iface = new ethers.Interface(["event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"]);
+
+    // Fetch Transfer logs and consider mints (from === zero address)
+    const transferTopic = ethers.id("Transfer(address,address,uint256)");
+    const logs = await provider.getLogs({ address: contractAddress, fromBlock: 0, toBlock: "latest", topics: [transferTopic] });
+
+    const mintedTokenIds = [];
+    for (const log of logs) {
+      try {
+        const parsed = iface.parseLog(log);
+        if (parsed && parsed.name === "Transfer") {
+          const from = parsed.args.from;
+          const tokenId = parsed.args.tokenId.toString();
+          // minted when from is zero address
+          if (from === ethers.ZeroAddress || from === "0x0000000000000000000000000000000000000000") {
+            mintedTokenIds.push(Number(tokenId));
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // Remove duplicates and sort
+    const unique = Array.from(new Set(mintedTokenIds)).sort((a, b) => a - b);
 
     const items = [];
-
-    for (let i = 0; i < total; i++) {
+    for (const id of unique) {
       try {
-        const meta = await contract.getBagMetadata(i);
-        const owner = await contract.ownerOf(i);
-
+        const owner = await contract.ownerOf(id);
+        const meta = await contract.getBagMetadata(id);
         items.push({
-          tokenId: i,
+          tokenId: id,
           bagName: meta.bagName,
           condition: meta.condition,
           material: meta.material,
           imageURI: meta.imageURI || "",
           owner
         });
-      } catch {
-        break;
+      } catch (e) {
+        // if a token was burned or inaccessible, skip
       }
     }
 
-    res.json({ items });
+    return res.json({ items });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ success: false, error: err.message || String(err) });
   }
 });

@@ -75,6 +75,16 @@
 
 <div class="controls">
   <input id="search" placeholder="Search bag..." />
+  <input id="mintBagName" placeholder="Mint bagName" />
+  <select id="mintCondition">
+    <option>New</option>
+    <option selected>Used</option>
+  </select>
+  <select id="mintMaterial">
+    <option>Leather</option>
+    <option selected>Canvas</option>
+  </select>
+  <button onclick="mintNFT()">Mint NFT</button>
   <select id="condition">
     <option value="">All Conditions</option>
     <option>New</option>
@@ -90,6 +100,7 @@
 </div>
 
 <div id="grid" class="grid"></div>
+<div id="status" style="text-align:center;padding:10px;color:#fff"></div>
 
 <script>
 let items = [];
@@ -99,6 +110,48 @@ async function loadCatalog() {
   const data = await res.json();
   items = data.items || [];
   render(items);
+}
+
+async function mintNFT() {
+  const bagName = document.getElementById('mintBagName').value.trim();
+  const condition = document.getElementById('mintCondition').value;
+  const material = document.getElementById('mintMaterial').value;
+  const status = document.getElementById('status');
+
+  if (!bagName) {
+    status.textContent = 'Please enter a bagName to mint.';
+    return;
+  }
+
+  status.textContent = 'Minting...';
+
+  try {
+    const res = await fetch('/mint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bagName, condition, material })
+    });
+
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    const bodyText = await res.text();
+
+    if (!res.ok) {
+      if (ct.includes('application/json')) {
+        const json = JSON.parse(bodyText || '{}');
+        throw new Error(json.error || 'mint failed');
+      }
+      throw new Error('Server error: ' + (bodyText || res.statusText));
+    }
+
+    const data = ct.includes('application/json') ? JSON.parse(bodyText) : { success: true };
+    if (!data.success) throw new Error(data.error || 'mint failed');
+
+    status.textContent = `Minted token ${data.tokenId} (tx ${data.txHash})`;
+    // refresh catalog
+    await loadCatalog();
+  } catch (err) {
+    status.textContent = 'Mint failed: ' + (err.message || err);
+  }
 }
 
 function render(list) {
