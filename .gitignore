@@ -2,3 +2,11 @@ node_modules/
 artifacts/
 cache/
 .env
+.venv/
+__pycache__/
+
+## ML datasets
+ml_pipeline/step1/
+ml_pipeline/step1/dataset.yaml
+ml_pipeline/step2/
+ml_pipeline/materials_dataset/
