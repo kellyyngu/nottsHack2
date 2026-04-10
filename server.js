@@ -1,20 +1,31 @@
 import express from "express";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { ethers } from "ethers";
 import { mintLuxuryPassport } from "./mint.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 app.use(express.static("."));
 
 // Return JSON on body parse errors (invalid JSON) instead of HTML error page
 app.use((err, req, res, next) => {
   // body-parser JSON errors come through here; normalize to JSON response
   if (err) {
+    const isPayloadTooLarge = err.type === "entity.too.large" || err.status === 413;
     const isBadJson = err.type === 'entity.parse.failed' ||
       err instanceof SyntaxError ||
       (err.status === 400 && typeof err.message === 'string' && err.message.toLowerCase().includes('json'));
+
+    if (isPayloadTooLarge) {
+      return res.status(413).json({
+        success: false,
+        error: "Image payload too large. Capture a smaller image and try again."
+      });
+    }
 
     if (isBadJson) {
       return res.status(400).json({ success: false, error: 'Invalid JSON body' });
@@ -39,12 +50,45 @@ function getConfig(requirePrivateKey = true) {
   return { rpcUrl, contractAddress, privateKey };
 }
 
+app.post("/upload-image", async (req, res) => {
+  try {
+    const { imageData } = req.body;
+
+    if (!imageData || typeof imageData !== "string") {
+      return res.status(400).json({ success: false, error: "imageData is required." });
+    }
+
+    const match = imageData.match(/^data:image\/(jpeg|jpg|png);base64,(.+)$/i);
+    if (!match) {
+      return res.status(400).json({ success: false, error: "Unsupported image format." });
+    }
+
+    const ext = match[1].toLowerCase() === "jpeg" ? "jpg" : match[1].toLowerCase();
+    const buffer = Buffer.from(match[2], "base64");
+
+    if (buffer.length > 1024 * 1024) {
+      return res.status(413).json({ success: false, error: "Image too large. Please retake with lower quality." });
+    }
+
+    const uploadsDir = path.join(process.cwd(), "uploads");
+    await mkdir(uploadsDir, { recursive: true });
+
+    const fileName = `${Date.now()}-${randomUUID()}.${ext}`;
+    const filePath = path.join(uploadsDir, fileName);
+    await writeFile(filePath, buffer);
+
+    return res.json({ success: true, imageURI: `/uploads/${fileName}` });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || String(err) });
+  }
+});
+
 app.post("/mint", async (req, res) => {
   try {
-    const { bagName, condition, material } = req.body;
+    const { bagName, condition, material, imageURI } = req.body;
 
-    if (!bagName || !condition || !material) {
-      return res.status(400).json({ error: "bagName, condition, and material are required." });
+    if (!bagName || !condition || !material || !imageURI) {
+      return res.status(400).json({ error: "bagName, condition, material and imageURI are required." });
     }
 
     const { rpcUrl, contractAddress, privateKey } = getConfig(true);
@@ -57,7 +101,8 @@ app.post("/mint", async (req, res) => {
       to: await signer.getAddress(),
       bagName,
       condition,
-      material
+      material,
+      imageURI
     });
 
     // Decode ERC-721 Transfer log to return minted tokenId in API response.
@@ -111,7 +156,7 @@ app.get("/read", async (req, res) => {
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     const ABI = [
       "function ownerOf(uint256 tokenId) view returns (address)",
-      "function getBagMetadata(uint256) view returns (tuple(string bagName,string condition,string material))"
+      "function getBagMetadata(uint256) view returns (tuple(string bagName,string condition,string material,string imageURI))"
     ];
 
     const contract = new ethers.Contract(contractAddress, ABI, provider);
@@ -134,7 +179,8 @@ app.get("/read", async (req, res) => {
       metadata: {
         bagName: metadata.bagName,
         condition: metadata.condition,
-        material: metadata.material
+        material: metadata.material,
+        imageURI: metadata.imageURI
       }
     });
   } catch (err) {
@@ -160,7 +206,7 @@ app.get("/catalog", async (req, res) => {
 
     const ABI = [
       "function ownerOf(uint256 tokenId) view returns (address)",
-      "function getBagMetadata(uint256) view returns (tuple(string bagName,string condition,string material))",
+      "function getBagMetadata(uint256) view returns (tuple(string bagName,string condition,string material,string imageURI))",
       "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
     ];
 

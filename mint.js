@@ -3,7 +3,7 @@ import { fileURLToPath } from "url";
 
 // Minimal ABI containing only the safeMint function.
 const LUXURY_PASSPORT_ABI = [
-  "function safeMint(address to, string bagName, string condition, string material) external returns (uint256 tokenId)"
+  "function safeMint(address to, string bagName, string condition, string material, string imageURI) external returns (uint256 tokenId)"
 ];
 
 /**
@@ -16,6 +16,7 @@ const LUXURY_PASSPORT_ABI = [
  * @param {string} params.bagName Bag name
  * @param {string} params.condition Bag condition
  * @param {string} params.material Bag material
+ * @param {string} params.imageURI Bag image URI/data URI
  * @returns {Promise<{hash: string, receipt: any}>}
  */
 export async function mintLuxuryPassport({
@@ -24,11 +25,12 @@ export async function mintLuxuryPassport({
   to,
   bagName,
   condition,
-  material
+  material,
+  imageURI
 }) {
   const contract = new ethers.Contract(contractAddress, LUXURY_PASSPORT_ABI, signer);
 
-  const tx = await contract.safeMint(to, bagName, condition, material);
+  const tx = await contract.safeMint(to, bagName, condition, material, imageURI);
   const receipt = await tx.wait();
 
   return {
@@ -60,7 +62,8 @@ if (__filename === process.argv[1]) {
     to: await signer.getAddress(),
     bagName: "Lady Dior",
     condition: "Excellent",
-    material: "Lambskin"
+    material: "Lambskin",
+    imageURI: "https://example.com/lady-dior.png"
   });
 
   console.log("Mint tx hash:", result.hash);

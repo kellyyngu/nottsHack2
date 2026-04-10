@@ -40,7 +40,7 @@
         <label class="form-label" for="material">MATERIAL</label>
         <input class="form-input" id="material" placeholder="Lambskin" />
 
-        <button id="mintBtn" class="primary-pill-btn">MINT NFT</button>
+        <button id="mintBtn" type="button" class="primary-pill-btn">MINT NFT</button>
 
         <p class="form-note">
           This page sends a POST request to <code>/mint</code>.
@@ -61,11 +61,38 @@
       </section>
 
       <aside class="editorial-card preview-panel">
-        <div class="preview-visual">
-          <img
-            src="https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=1200&q=80"
-            alt="Luxury bag preview"
-          />
+        <div class="camera-section">
+          <div class="camera-topbar">
+            <button type="button" class="back-btn" id="backBtn" onclick="goBackToSourceOptions()" style="display: none;">Back</button>
+          </div>
+          <h2>Product Image</h2>
+          <div class="source-toggle">
+            <button type="button" id="cameraModeBtn" onclick="switchImageSource('camera')">Use Live Camera</button>
+            <button type="button" id="uploadModeBtn" class="active" onclick="switchImageSource('upload')">Upload Image</button>
+          </div>
+
+          <div id="uploadPanel" class="source-panel">
+            <input id="imageInput" type="file" accept="image/*" onchange="handleImageUpload(event)" />
+          </div>
+
+          <div id="cameraPanel" class="source-panel hidden">
+            <video id="videoStream" autoplay muted playsinline></video>
+            <div class="camera-controls">
+              <button type="button" class="start-camera-btn" id="startCameraBtn" onclick="startCamera()">Start Camera</button>
+              <button type="button" class="capture-btn" id="captureBtn" onclick="captureFromCamera()" style="display: none;">Capture</button>
+              <button type="button" class="stop-camera-btn" id="stopCameraBtn" onclick="stopCamera()" style="display: none;">Stop Camera</button>
+            </div>
+          </div>
+
+          <img id="capturedImage" alt="Captured image" />
+          <canvas id="canvas"></canvas>
+          
+          <div class="camera-controls">
+            <button type="button" class="approve-btn" id="approveBtn" onclick="approveImage()" style="display: none;">Approve Image</button>
+            <button type="button" class="retake-btn" id="clearBtn" onclick="clearSelectedImage()" style="display: none;">Retake Image</button>
+          </div>
+          <div class="camera-status" id="cameraStatus"></div>
+          <div class="image-preview" id="imagePreview"></div>
         </div>
 
         <div class="preview-copy">
@@ -89,9 +116,265 @@
     function showStatus(message, isError = false) {
       statusEl.textContent = message;
       statusEl.className = isError ? "status-box err" : "status-box ok";
+      statusEl.style.display = 'block';
+      statusEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 
-    mintBtn.addEventListener("click", async () => {
+    let stream = null;
+    let capturedImageData = null;
+    let imageApproved = false;
+    let currentSource = 'upload';
+    const MAX_CAPTURE_WIDTH = 512;
+    const TARGET_IMAGE_BYTES = 120 * 1024;
+
+    function compressImageFromSource(sourceEl, sourceWidth, sourceHeight) {
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      let scale = Math.min(1, MAX_CAPTURE_WIDTH / sourceWidth);
+      let quality = 0.7;
+      let targetWidth = Math.max(1, Math.floor(sourceWidth * scale));
+      let targetHeight = Math.max(1, Math.floor(sourceHeight * scale));
+
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      ctx.drawImage(sourceEl, 0, 0, targetWidth, targetHeight);
+      capturedImageData = canvas.toDataURL('image/jpeg', quality);
+
+      // Keep reducing quality and dimensions until we are under the target size.
+      let estimatedBytes = Math.floor(capturedImageData.length * 0.75);
+      while (estimatedBytes > TARGET_IMAGE_BYTES && (quality > 0.4 || targetWidth > 320)) {
+        if (quality > 0.4) {
+          quality -= 0.1;
+        } else {
+          targetWidth = Math.max(320, Math.floor(targetWidth * 0.9));
+          targetHeight = Math.max(180, Math.floor(targetHeight * 0.9));
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+          ctx.drawImage(sourceEl, 0, 0, targetWidth, targetHeight);
+        }
+
+        capturedImageData = canvas.toDataURL('image/jpeg', quality);
+        estimatedBytes = Math.floor(capturedImageData.length * 0.75);
+      }
+
+      return { targetWidth, targetHeight, quality, estimatedBytes };
+    }
+
+    function switchImageSource(source) {
+      currentSource = source;
+
+      const uploadPanel = document.getElementById('uploadPanel');
+      const cameraPanel = document.getElementById('cameraPanel');
+      const sourceToggle = document.querySelector('.source-toggle');
+      const uploadModeBtn = document.getElementById('uploadModeBtn');
+      const cameraModeBtn = document.getElementById('cameraModeBtn');
+
+      if (sourceToggle) {
+        sourceToggle.style.display = 'none';
+      }
+
+      document.getElementById('backBtn').style.display = 'inline-flex';
+
+      if (source === 'upload') {
+        uploadPanel.classList.remove('hidden');
+        cameraPanel.classList.add('hidden');
+        uploadModeBtn.classList.add('active');
+        cameraModeBtn.classList.remove('active');
+        stopCamera();
+        updateCameraStatus('Upload an image, then approve it before minting.', 'info');
+      } else {
+        uploadPanel.classList.add('hidden');
+        cameraPanel.classList.remove('hidden');
+        uploadModeBtn.classList.remove('active');
+        cameraModeBtn.classList.add('active');
+        updateCameraStatus('Start camera, capture an image, then approve it.', 'info');
+        startCamera();
+      }
+    }
+
+    function handleImageUpload(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      if (!file.type.startsWith('image/')) {
+        updateCameraStatus('Please select a valid image file.', 'error');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const previewImage = new Image();
+        previewImage.onload = () => {
+          const { targetWidth, targetHeight, quality, estimatedBytes } = compressImageFromSource(
+            previewImage,
+            previewImage.naturalWidth,
+            previewImage.naturalHeight
+          );
+
+          const capturedImg = document.getElementById('capturedImage');
+          capturedImg.src = capturedImageData;
+          capturedImg.style.display = 'block';
+
+          document.getElementById('approveBtn').style.display = 'inline-block';
+          document.getElementById('clearBtn').style.display = 'inline-block';
+          document.getElementById('approveBtn').textContent = 'Approve Image';
+          imageApproved = false;
+
+          updateCameraStatus('Image uploaded. Approve image before minting.', 'success');
+          const approxKB = Math.round(estimatedBytes / 1024);
+          document.getElementById('imagePreview').textContent = `Image prepared (${targetWidth}x${targetHeight}, q=${quality.toFixed(2)}, ~${approxKB}KB).`;
+        };
+
+        previewImage.src = reader.result;
+      };
+
+      reader.readAsDataURL(file);
+    }
+
+    async function startCamera() {
+      try {
+        updateCameraStatus('Requesting camera access...', 'info');
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: 'user'
+          },
+          audio: false
+        });
+
+        const video = document.getElementById('videoStream');
+        video.srcObject = stream;
+        video.style.display = 'block';
+        video.onloadedmetadata = () => {
+          video.play().catch(() => {
+            updateCameraStatus('Camera opened, but playback was blocked. Try again.', 'error');
+          });
+        };
+
+        document.getElementById('startCameraBtn').style.display = 'none';
+        document.getElementById('backBtn').style.display = 'inline-flex';
+        document.getElementById('captureBtn').style.display = 'inline-block';
+        document.getElementById('stopCameraBtn').style.display = 'inline-block';
+
+        updateCameraStatus('Camera is live. Capture an image to continue.', 'success');
+      } catch (err) {
+        updateCameraStatus(`Camera error: ${err.message}.`, 'error');
+      }
+    }
+
+    function captureFromCamera() {
+      const video = document.getElementById('videoStream');
+      if (!video.videoWidth || !video.videoHeight) {
+        updateCameraStatus('Camera is not ready yet. Try again in a moment.', 'error');
+        return;
+      }
+
+      const { targetWidth, targetHeight, quality, estimatedBytes } = compressImageFromSource(
+        video,
+        video.videoWidth,
+        video.videoHeight
+      );
+
+      const capturedImg = document.getElementById('capturedImage');
+      capturedImg.src = capturedImageData;
+      capturedImg.style.display = 'block';
+
+      document.getElementById('startCameraBtn').style.display = 'none';
+      document.getElementById('approveBtn').style.display = 'inline-block';
+      document.getElementById('clearBtn').style.display = 'inline-block';
+      document.getElementById('approveBtn').textContent = 'Approve Image';
+      imageApproved = false;
+
+      stopCamera();
+      document.getElementById('startCameraBtn').style.display = 'none';
+
+      updateCameraStatus('Image captured from live feed. Approve image before minting.', 'success');
+      const approxKB = Math.round(estimatedBytes / 1024);
+      document.getElementById('imagePreview').textContent = `Image prepared (${targetWidth}x${targetHeight}, q=${quality.toFixed(2)}, ~${approxKB}KB).`;
+    }
+
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+
+      const video = document.getElementById('videoStream');
+      video.srcObject = null;
+      video.style.display = 'none';
+      document.getElementById('startCameraBtn').style.display = 'inline-block';
+      document.getElementById('captureBtn').style.display = 'none';
+      document.getElementById('stopCameraBtn').style.display = 'none';
+    }
+
+    function goBackToSourceOptions() {
+      stopCamera();
+      currentSource = 'upload';
+
+      document.getElementById('capturedImage').style.display = 'none';
+      document.getElementById('approveBtn').style.display = 'none';
+      document.getElementById('clearBtn').style.display = 'none';
+      document.getElementById('approveBtn').textContent = 'Approve Image';
+
+      document.getElementById('cameraPanel').classList.add('hidden');
+      document.getElementById('uploadPanel').classList.add('hidden');
+      document.querySelector('.source-toggle').style.display = 'flex';
+      document.getElementById('uploadModeBtn').classList.remove('active');
+      document.getElementById('cameraModeBtn').classList.remove('active');
+      document.getElementById('backBtn').style.display = 'none';
+
+      updateCameraStatus('Choose Upload Image or Use Live Camera.', 'info');
+      document.getElementById('imagePreview').textContent = '';
+    }
+
+    function clearSelectedImage() {
+      capturedImageData = null;
+      imageApproved = false;
+
+      const capturedImg = document.getElementById('capturedImage');
+      capturedImg.src = '';
+      capturedImg.style.display = 'none';
+
+      document.getElementById('imageInput').value = '';
+      document.getElementById('approveBtn').style.display = 'none';
+      document.getElementById('approveBtn').textContent = 'Approve Image';
+      document.getElementById('clearBtn').style.display = 'none';
+
+      const message = currentSource === 'camera'
+        ? 'Retaking image. Restarting live camera.'
+        : 'Image cleared. Upload a new image.';
+      updateCameraStatus(message, 'info');
+      document.getElementById('imagePreview').textContent = '';
+
+      if (currentSource === 'camera') {
+        startCamera();
+      } else {
+        document.getElementById('backBtn').style.display = 'inline-flex';
+      }
+    }
+
+    function approveImage() {
+      if (!capturedImageData) {
+        updateCameraStatus('Upload an image first.', 'error');
+        return;
+      }
+
+      imageApproved = true;
+      document.getElementById('approveBtn').textContent = 'Approved ✓';
+      updateCameraStatus('Image approved. You can mint now.', 'success');
+      document.getElementById('imagePreview').textContent = 'Approved image remains temporary and is not uploaded to a database.';
+    }
+
+    function updateCameraStatus(message, type) {
+      const status = document.getElementById('cameraStatus');
+      status.textContent = message;
+      status.style.color = type === 'error' ? '#ef4444' : type === 'success' ? '#10b981' : '#94a3b8';
+    }
+
+    async function mintNftFlow() {
+      console.log('mint button clicked');
+
       const bagName = document.getElementById("bagName").value.trim();
       const condition = document.getElementById("condition").value.trim();
       const material = document.getElementById("material").value.trim();
@@ -101,14 +384,38 @@
         return;
       }
 
+      if (!capturedImageData) {
+        showStatus("Please upload or capture an image before minting.", true);
+        return;
+      }
+
+      if (!imageApproved) {
+        showStatus("Please approve the image before minting.", true);
+        return;
+      }
+
       mintBtn.disabled = true;
-      showStatus("Minting via backend...");
+      showStatus("Uploading image...");
 
       try {
+        const uploadRes = await fetch("/upload-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageData: capturedImageData })
+        });
+
+        const uploadData = await uploadRes.json();
+
+        if (!uploadRes.ok || !uploadData.success || !uploadData.imageURI) {
+          throw new Error(uploadData.error || "Image upload failed");
+        }
+
+        showStatus("Minting new NFT...");
+
         const res = await fetch("/mint", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bagName, condition, material })
+          body: JSON.stringify({ bagName, condition, material, imageURI: uploadData.imageURI })
         });
 
         const data = await res.json();
@@ -127,12 +434,22 @@
         document.getElementById("bagName").value = "";
         document.getElementById("condition").value = "";
         document.getElementById("material").value = "";
+        capturedImageData = null;
+        imageApproved = false;
+        document.getElementById('capturedImage').style.display = 'none';
+        document.getElementById('approveBtn').style.display = 'none';
+        document.getElementById('approveBtn').textContent = 'Approve Image';
+        document.getElementById('clearBtn').style.display = 'none';
+        document.getElementById('imagePreview').textContent = '';
       } catch (err) {
         showStatus(`Mint failed: ${err.message || String(err)}`, true);
       } finally {
         mintBtn.disabled = false;
       }
-    });
+    }
+
+    mintBtn.addEventListener("click", mintNftFlow);
+    mintBtn.onclick = mintNftFlow;
 
     viewBtn.addEventListener("click", async () => {
       const tokenIdValue = document.getElementById("tokenId").value.trim();
@@ -179,6 +496,15 @@
         viewBtn.disabled = false;
       }
     });
+
+    window.switchImageSource = switchImageSource;
+    window.handleImageUpload = handleImageUpload;
+    window.startCamera = startCamera;
+    window.captureFromCamera = captureFromCamera;
+    window.stopCamera = stopCamera;
+    window.goBackToSourceOptions = goBackToSourceOptions;
+    window.clearSelectedImage = clearSelectedImage;
+    window.approveImage = approveImage;
   </script>
 </body>
 </html>

@@ -989,3 +989,166 @@ main {
   height: 100%;
   object-fit: cover;
 }
+
+ #status {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+      display: none;
+    }
+
+    #status.success {
+      background: #10b981;
+      color: white;
+      display: block;
+    }
+
+    #status.error {
+      background: #ef4444;
+      color: white;
+      display: block;
+    }
+
+    .camera-section {
+      margin-bottom: 30px;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      text-align: center;
+    }
+
+    .camera-topbar {
+      display: flex;
+      justify-content: flex-start;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .back-btn {
+      padding: 16px 24px;
+      border: none;
+      border-radius: 999px;
+      font-size: 0.86rem;
+      line-height: 1;
+      display: none;
+      cursor: pointer;
+      background: var(--stone);
+      color: #ffffff;
+    }
+
+    .back-btn:hover {
+      background: #4b4b41;
+    }
+
+    .camera-section button,
+    #imageInput::file-selector-button {
+      background: var(--stone);
+      color: #ffffff;
+      border: none;
+      border-radius: 999px;
+      padding: 16px 24px;
+      font-size: 0.86rem;
+      letter-spacing: 0.12em;
+      font-family: Arial, Helvetica, sans-serif;
+      cursor: pointer;
+    }
+
+    .camera-section button:hover,
+    #imageInput::file-selector-button:hover {
+      background: #4b4b41;
+    }
+
+    .camera-section h2 {
+      margin-top: 0;
+      font-size: 18px;
+      margin-bottom: 15px;
+    }
+
+    .source-toggle {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .source-toggle button {
+      flex: 1;
+      width: 100%;
+    }
+
+    .source-toggle button.active {
+      width: 100%;
+    }
+
+    .source-panel {
+      margin-bottom: 15px;
+    }
+
+    .source-panel.hidden {
+      display: none;
+    }
+
+    #videoStream {
+      width: 100%;
+      max-width: 100%;
+      border-radius: 8px;
+      background: #fffcef;
+      display: none;
+      margin-bottom: 15px;
+      max-height: 320px;
+      object-fit: contain;
+    }
+
+    #capturedImage {
+      width: 100%;
+      max-width: 100%;
+      border-radius: 8px;
+      display: none;
+      margin-bottom: 15px;
+      max-height: 300px;
+      object-fit: contain;
+    }
+
+    #canvas {
+      display: none;
+    }
+
+    #imageInput {
+      width: 100%;
+      box-sizing: border-box;
+      margin-bottom: 15px;
+      cursor: pointer;
+      color: #ffffff;
+    }
+
+    #imageInput::file-selector-button {
+      width: 100%;
+      margin-right: 12px;
+    }
+
+    .camera-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .camera-controls button {
+      padding: 10px 15px;
+      font-size: 14px;
+      flex: 1 1 auto;
+      width: 100%;
+    }
+
+    .image-preview {
+      margin-top: 15px;
+      font-size: 14px;
+      color: #cbd5e1;
+    }
+
+    .camera-status {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-top: 10px;
+    }

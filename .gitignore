@@ -10,3 +10,6 @@ ml_pipeline/step1/
 ml_pipeline/step1/dataset.yaml
 ml_pipeline/step2/
 ml_pipeline/materials_dataset/
+
+# Upload images
+uploads/
