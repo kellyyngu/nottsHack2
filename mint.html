@@ -354,16 +354,43 @@
       }
     }
 
-    function approveImage() {
+    async function approveImage() {
       if (!capturedImageData) {
         updateCameraStatus('Upload an image first.', 'error');
         return;
       }
 
+      try {
+        const blob = await (await fetch(capturedImageData)).blob();
+        const formData = new FormData();
+        formData.append('file', blob, 'capture.jpg');
+
+        const response = await fetch('http://127.0.0.1:8000/verify', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.status === 'success') {
+            imageApproved = true;
+            document.getElementById('approveBtn').textContent = 'Approved ✓';
+            updateCameraStatus('Image approved. You can mint now.', 'success');
+            document.getElementById('imagePreview').textContent = 'Verification passed. Image approved for minting.';
+            return;
+          }
+
+          updateCameraStatus('Verification failed. Please retake or upload a clearer image.', 'error');
+          return;
+        }
+      } catch {
+        // Continue to manual approval fallback when verifier is unreachable.
+      }
+
       imageApproved = true;
       document.getElementById('approveBtn').textContent = 'Approved ✓';
-      updateCameraStatus('Image approved. You can mint now.', 'success');
-      document.getElementById('imagePreview').textContent = 'Approved image remains temporary and is not uploaded to a database.';
+      updateCameraStatus('Image approved (verifier unavailable). You can mint now.', 'success');
+      document.getElementById('imagePreview').textContent = 'Image approved for minting.';
     }
 
     function updateCameraStatus(message, type) {
