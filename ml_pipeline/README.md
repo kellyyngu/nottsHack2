@@ -1,60 +1,55 @@
-# ML Pipeline (Split by Step)
+# ML Verifier Backend (FastAPI)
 
-This folder extracts your notebook into separate runnable scripts.
+This service provides the image verification endpoint used by the mint flow.
 
-## Files
+## Start The Backend Connection
 
-- `step1_bag_detection.py`: handbag detection dataset prep, training, and crop inference
-- `step2_real_vs_ai.py`: real-vs-AI dataset extraction and ResNet50 training
-- `step3_material_classifier.py`: YOLO11 classification for material type
-- `step4_defect_classifier.py`: defect dataset split, training, and inference
-- `run_step.py`: tiny dispatcher to run any step
-- `requirements-ml.txt`: Python dependencies
-
-## Setup
+1. Open a terminal in the project root and activate your environment:
 
 ```bash
-pip install -r ml_pipeline/requirements-ml.txt
+source .venv/Scripts/activate
 ```
 
-## Step 1: Bag Detection
+2. Start the verifier API from the `ml_pipeline` folder:
 
 ```bash
-python ml_pipeline/step1_bag_detection.py prepare --export-dir ./data/handbag_dataset
-python ml_pipeline/step1_bag_detection.py train --data ./data/handbag_dataset/dataset.yaml --project ./runs/detect --name bag_detector
-python ml_pipeline/step1_bag_detection.py infer --weights ./runs/detect/bag_detector/weights/best.pt --image ./sample.jpg
+cd ml_pipeline
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-## Step 2: Real vs AI
+3. Keep this terminal running. The mint page sends verification requests to:
+
+`http://127.0.0.1:8000/verify`
+
+## Also Start The Main App Backend
+
+In a second terminal, run the Node/Express backend from the repository root:
 
 ```bash
-python ml_pipeline/step2_real_vs_ai.py extract --zip ./ai-generated-images-vs-real-images.zip --target ./data/mscoco_security
-python ml_pipeline/step2_real_vs_ai.py train --data-dir ./data/mscoco_security/train --save ./weights/ai_detector_weights.pth
+npm start
 ```
 
-## Step 3: Material Classifier
+The frontend needs both services:
+
+- Express app: handles `/mint`, `/upload-image`, `/catalog`, etc.
+- FastAPI verifier: handles `/verify`
+
+## Quick Connectivity Checks
+
+Verifier health:
 
 ```bash
-python ml_pipeline/step3_material_classifier.py --data ./materials_dataset --project ./runs/classify --name material_classifier
+curl http://127.0.0.1:8000/
 ```
 
-## Step 4: Defect Classifier
+Expected response includes:
 
-```bash
-python ml_pipeline/step4_defect_classifier.py prepare --source ./raw/Leather_Defect_Classification --out ./data/leather_yolo_data
-python ml_pipeline/step4_defect_classifier.py train --data ./data/leather_yolo_data --project ./runs/classify --name defect_classifier
-python ml_pipeline/step4_defect_classifier.py infer --weights ./runs/classify/defect_classifier/weights/best.pt --image ./sample.jpg
+```json
+{"status":"online","model":"EcoTrace v1.0"}
 ```
 
-## Optional: Run via dispatcher
+If `Cannot POST /verify` appears, confirm:
 
-```bash
-python ml_pipeline/run_step.py step1 train --data ./data/handbag_dataset/dataset.yaml
-python ml_pipeline/run_step.py step4 infer --weights ./runs/classify/defect_classifier/weights/best.pt --image ./sample.jpg
-```
-
-## Notes
-
-- These scripts are designed for standard Python, not notebook magics.
-- Keep dataset paths local and adjust command paths to your environment.
-- For Kaggle downloads, ensure your Kaggle auth credentials are configured.
+1. Uvicorn is running on port `8000`
+2. Frontend is calling `http://127.0.0.1:8000/verify`
+3. No firewall/proxy is blocking localhost calls
