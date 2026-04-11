@@ -4,7 +4,7 @@ import torch.nn as nn
 from torchvision import models, transforms
 from PIL import Image
 
-class EcoTraceEngine:
+class HashBagEngine:
     def __init__(self, gatekeeper_path, security_path, material_path, defect_path):
         self.gatekeeper = YOLO(gatekeeper_path)
         self.security = self._load_resnet(security_path)

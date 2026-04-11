@@ -6,16 +6,21 @@
   "scripts": {
     "compile": "npx hardhat compile",
     "deploy:localhost": "npx hardhat run deploy.js --network localhost",
+    "deploy:ignition:localhost": "npx hardhat ignition deploy ./ignition/modules/LuxuryPassportNFT.js --network localhost",
+    "deploy:ignition:base-sepolia": "npx hardhat ignition deploy ./ignition/modules/LuxuryPassportNFT.js --network baseSepolia",
     "deploy:node": "node deploy.js",
     "start": "node server.js"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.0.7",
-    "ethers": "^6.6.0",
+    "@nomicfoundation/hardhat-ignition": "^3.1.1",
+    "@nomicfoundation/hardhat-ignition-ethers": "^3.1.1",
+    "ethers": "^6.16.0",
     "hardhat": "^3.3.0"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^4.9.3",
+    "dotenv": "^17.4.1",
     "express": "^4.21.2"
   }
 }

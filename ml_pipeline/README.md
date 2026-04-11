@@ -45,7 +45,7 @@ curl http://127.0.0.1:8000/
 Expected response includes:
 
 ```json
-{"status":"online","model":"EcoTrace v1.0"}
+{"status":"online","model":"HashBag v1.0"}
 ```
 
 If `Cannot POST /verify` appears, confirm:

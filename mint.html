@@ -42,6 +42,20 @@
         <label class="form-label" for="material">MATERIAL</label>
         <input class="form-input" id="material" placeholder="Lambskin" />
 
+        <div class="mint-divider"></div>
+
+        <h2>Dash Payment</h2>
+        <p class="form-note">Pay to the merchant Dash address, then paste the payment TXID before minting.</p>
+
+        <label class="form-label" for="dashAddress">DASH MERCHANT ADDRESS</label>
+        <input class="form-input" id="dashAddress" readonly />
+
+        <label class="form-label" for="dashTxId">DASH PAYMENT TXID</label>
+        <input class="form-input" id="dashTxId" placeholder="64-char transaction ID" />
+
+        <button id="verifyDashBtn" type="button" class="secondary-pill-btn">VERIFY DASH PAYMENT</button>
+        <div id="dashPaymentStatus" class="status-box"></div>
+
         <button id="mintBtn" type="button" class="primary-pill-btn">MINT NFT</button>
 
         <p class="form-note">

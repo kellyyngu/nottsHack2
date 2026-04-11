@@ -2,14 +2,14 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from engine import EcoTraceEngine
+from engine import HashBagEngine
 
 # --- INITIALIZE ENGINE ---
-# Define the paths to your 4 weight files
+# Define the paths to weight files
 WEIGHTS = {
     'gatekeeper': 'weights/bag_detector.pt',
     'security':   'weights/ai_detector_weights.pth',
-    'material':   'weights/yolo11n-material-cls.pt',
+    'material':   'weights/material-cls.pt',
     'defect':     'weights/leather-defect.pt'
 }
 
@@ -20,7 +20,7 @@ async def lifespan(app: FastAPI):
     app.state.engine_error = None
 
     try:
-        app.state.engine = EcoTraceEngine(
+        app.state.engine = HashBagEngine(
             WEIGHTS['gatekeeper'],
             WEIGHTS['security'],
             WEIGHTS['material'],
@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
-app = FastAPI(title="EcoTrace AI Authentication API", lifespan=lifespan)
+app = FastAPI(title="HashBag AI Authentication API", lifespan=lifespan)
 
 # --- CORS SETTINGS ---
 # This allows your frontend (React, Vue, or simple HTML) to talk to this API
@@ -47,7 +47,7 @@ app.add_middleware(
 
 @app.get("/")
 def health_check():
-    return {"status": "online", "model": "EcoTrace v1.0"}
+    return {"status": "online", "model": "HashBag v1.0"}
 
 @app.post("/verify")
 async def verify_bag(file: UploadFile = File(...)):

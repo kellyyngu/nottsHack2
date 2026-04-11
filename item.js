@@ -20,6 +20,7 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("metaTokenId").textContent = tokenId;
         document.getElementById("metaCondition").textContent = data.metadata.condition || "-";
         document.getElementById("metaMaterial").textContent = data.metadata.material || "-";
+        document.getElementById("metaDashTxId").textContent = data.metadata.dashTxId || "-";
         document.getElementById("metaOwner").textContent = data.owner || "-";
       } catch (err) {
         document.getElementById("itemName").textContent = "Failed to load item";
@@ -60,6 +61,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("metaTokenId").textContent = tokenId;
     document.getElementById("metaCondition").textContent = metadata.condition || "-";
     document.getElementById("metaMaterial").textContent = metadata.material || "-";
+    document.getElementById("metaDashTxId").textContent = metadata.dashTxId || "-";
     document.getElementById("metaOwner").textContent = owner || "-";
 
   } catch (err) {

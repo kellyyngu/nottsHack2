@@ -1,7 +1,9 @@
 const statusEl = document.getElementById("status");
 const mintBtn = document.getElementById("mintBtn");
 const viewBtn = document.getElementById("viewBtn");
+const verifyDashBtn = document.getElementById("verifyDashBtn");
 const viewResultEl = document.getElementById("viewResult");
+const dashPaymentStatusEl = document.getElementById("dashPaymentStatus");
 
 function showStatus(message, isError = false) {
   statusEl.textContent = message;
@@ -14,8 +16,84 @@ let stream = null;
 let capturedImageData = null;
 let imageApproved = false;
 let currentSource = "upload";
+let paymentVerified = false;
+let verifiedDashTxId = "";
 const MAX_CAPTURE_WIDTH = 512;
 const TARGET_IMAGE_BYTES = 120 * 1024;
+
+function showDashPaymentStatus(message, isError = false) {
+  if (!dashPaymentStatusEl) {
+    return;
+  }
+
+  dashPaymentStatusEl.textContent = message;
+  dashPaymentStatusEl.className = isError ? "status-box err" : "status-box ok";
+  dashPaymentStatusEl.style.display = "block";
+}
+
+async function loadDashPaymentInfo() {
+  try {
+    const res = await fetch("/dash/payment-info");
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || "Failed to load Dash payment address");
+    }
+
+    const dashAddressInput = document.getElementById("dashAddress");
+    dashAddressInput.value = data.merchantAddress || "";
+    showDashPaymentStatus(`Pay at least ${data.minimumDash} DASH, then verify your TXID.`);
+  } catch (err) {
+    showDashPaymentStatus(err.message || String(err), true);
+  }
+}
+
+async function verifyDashPayment() {
+  const dashTxId = document.getElementById("dashTxId").value.trim();
+
+  if (!dashTxId) {
+    showDashPaymentStatus("Enter a Dash transaction ID first.", true);
+    return;
+  }
+
+  verifyDashBtn.disabled = true;
+  showDashPaymentStatus("Verifying Dash payment...");
+
+  try {
+    const res = await fetch("/dash/verify-payment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ txid: dashTxId })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || "Dash payment verification failed");
+    }
+
+    if (!data.meetsMinimum) {
+      paymentVerified = false;
+      verifiedDashTxId = "";
+      showDashPaymentStatus(
+        `Payment too low. Received ${data.receivedDash} DASH but minimum is required.`,
+        true
+      );
+      return;
+    }
+
+    paymentVerified = true;
+    verifiedDashTxId = dashTxId;
+    showDashPaymentStatus(
+      `Dash payment verified: ${data.receivedDash} DASH (${data.confirmations} confirmations).`
+    );
+  } catch (err) {
+    paymentVerified = false;
+    verifiedDashTxId = "";
+    showDashPaymentStatus(err.message || String(err), true);
+  } finally {
+    verifyDashBtn.disabled = false;
+  }
+}
 
 function compressImageFromSource(sourceEl, sourceWidth, sourceHeight) {
   const canvas = document.getElementById("canvas");
@@ -293,6 +371,7 @@ async function mintNftFlow() {
   const bagName = document.getElementById("bagName").value.trim();
   const condition = document.getElementById("condition").value.trim();
   const material = document.getElementById("material").value.trim();
+  const dashTxId = document.getElementById("dashTxId").value.trim();
 
   if (!bagName || !condition || !material) {
     showStatus("Please fill all fields.", true);
@@ -306,6 +385,16 @@ async function mintNftFlow() {
 
   if (!imageApproved) {
     showStatus("Please approve the image before minting.", true);
+    return;
+  }
+
+  if (!dashTxId) {
+    showStatus("Please enter your Dash payment TXID before minting.", true);
+    return;
+  }
+
+  if (!paymentVerified || dashTxId !== verifiedDashTxId) {
+    showStatus("Please verify your Dash payment TXID before minting.", true);
     return;
   }
 
@@ -330,7 +419,7 @@ async function mintNftFlow() {
     const res = await fetch("/mint", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bagName, condition, material, imageURI: uploadData.imageURI })
+      body: JSON.stringify({ bagName, condition, material, imageURI: uploadData.imageURI, dashTxId })
     });
 
     const data = await res.json();
@@ -349,8 +438,11 @@ async function mintNftFlow() {
     document.getElementById("bagName").value = "";
     document.getElementById("condition").value = "";
     document.getElementById("material").value = "";
+    document.getElementById("dashTxId").value = "";
     capturedImageData = null;
     imageApproved = false;
+    paymentVerified = false;
+    verifiedDashTxId = "";
     document.getElementById("capturedImage").style.display = "none";
     document.getElementById("approveBtn").style.display = "none";
     document.getElementById("approveBtn").textContent = "Approve Image";
@@ -400,7 +492,8 @@ async function viewNFT() {
       `Owner: ${data.owner}`,
       `bagName: ${data.metadata.bagName}`,
       `condition: ${data.metadata.condition}`,
-      `material: ${data.metadata.material}`
+      `material: ${data.metadata.material}`,
+      `dashTxId: ${data.metadata.dashTxId || "-"}`
     ].join("\n");
   } catch (err) {
     viewResultEl.textContent = `Read failed: ${err.message || String(err)}`;
@@ -412,6 +505,9 @@ async function viewNFT() {
 document.addEventListener("DOMContentLoaded", () => {
   mintBtn.addEventListener("click", mintNftFlow);
   viewBtn.addEventListener("click", viewNFT);
+  verifyDashBtn.addEventListener("click", verifyDashPayment);
+
+  loadDashPaymentInfo();
 
   window.switchImageSource = switchImageSource;
   window.handleImageUpload = handleImageUpload;

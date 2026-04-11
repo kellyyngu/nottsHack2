@@ -37,6 +37,12 @@ You can set environment variables directly in PowerShell (or use `.env.example` 
 - `CONTRACT_ADDRESS`: deployed NFT contract address
 - `PRIVATE_KEY`: backend signer private key (for minting)
 - `PORT`: Express server port
+- `BASE_SEPOLIA_RPC_URL`: Base Sepolia RPC endpoint for deployment
+- `BASE_SEPOLIA_PRIVATE_KEY`: deployer private key for Base Sepolia
+- `DASH_NETWORK`: `testnet` or `mainnet` (used for payment verification)
+- `DASH_MERCHANT_ADDRESS`: Dash address that receives user payments
+- `DASH_MIN_PAYMENT`: minimum required Dash amount before minting
+- `DASH_EXPLORER_BASE_URL`: optional explorer API override
 
 PowerShell example:
 
@@ -79,8 +85,38 @@ Important: open the frontend through the same backend port so `/mint` and `/read
 
 - `npm run compile`: compile Solidity contracts with Hardhat
 - `npm run deploy:localhost`: deploy using Hardhat runtime on `localhost`
+- `npm run deploy:ignition:localhost`: deploy via Hardhat Ignition to localhost
+- `npm run deploy:ignition:base-sepolia`: deploy via Hardhat Ignition to Base Sepolia
 - `npm run deploy:node`: deploy using `deploy.js`
 - `npm start`: start Express backend
+
+## Base Sepolia Deployment (Hardhat Ignition)
+
+1. Set deployment environment variables:
+
+```bash
+export BASE_SEPOLIA_RPC_URL="https://sepolia.base.org"
+export BASE_SEPOLIA_PRIVATE_KEY="0xYOUR_BASE_DEPLOYER_PRIVATE_KEY"
+```
+
+2. Compile and deploy with Ignition:
+
+```bash
+npm run compile
+npm run deploy:ignition:base-sepolia
+```
+
+3. Copy the deployed contract address from Ignition output and set `CONTRACT_ADDRESS` for the backend.
+
+## Dash Payment TXID Mint Flow
+
+The mint flow now requires a verified Dash payment transaction ID (`dashTxId`) before minting.
+
+1. User opens the sell page and gets the merchant Dash address from `GET /dash/payment-info`.
+2. User sends Dash payment from their own wallet.
+3. User pastes the resulting Dash TXID into the sell form and clicks verify.
+4. Backend validates TXID via Dash explorer and confirms payment to `DASH_MERCHANT_ADDRESS`.
+5. If valid, minting proceeds and stores `dashTxId` on-chain in NFT metadata.
 
 ## API Reference
 

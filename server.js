@@ -1,12 +1,25 @@
 import express from "express";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { ethers } from "ethers";
+import dotenv from "dotenv";
 import { mintLuxuryPassport } from "./mint.js";
+
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const DASH_NETWORK = (process.env.DASH_NETWORK || "testnet").toLowerCase();
+const DASH_MERCHANT_ADDRESS = process.env.DASH_MERCHANT_ADDRESS || "";
+const DASH_MIN_PAYMENT = Number(process.env.DASH_MIN_PAYMENT || "0");
+const DASH_EXPLORER_BASE_URL =
+  process.env.DASH_EXPLORER_BASE_URL ||
+  (DASH_NETWORK === "mainnet" ? "https://api.blockchair.com/dash" : "https://api.blockchair.com/dash/testnet");
+const ACCOUNT_FILE = path.join(process.cwd(), "data", "accounts.json");
+const ACCOUNT_CHALLENGE_TTL_MS = 10 * 60 * 1000;
+
+const accountChallenges = new Map();
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.static("."));
@@ -50,6 +63,352 @@ function getConfig(requirePrivateKey = true) {
   return { rpcUrl, contractAddress, privateKey };
 }
 
+function isValidDashTxid(txid) {
+  return typeof txid === "string" && /^[a-fA-F0-9]{64}$/.test(txid.trim());
+}
+
+function normalizeEthAddress(address) {
+  if (typeof address !== "string") {
+    return "";
+  }
+
+  const trimmed = address.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    return ethers.getAddress(trimmed);
+  } catch {
+    return "";
+  }
+}
+
+function normalizeDashAddress(address) {
+  return typeof address === "string" ? address.trim() : "";
+}
+
+function buildChallengeMessage({ purpose, walletAddress, merchantAddress, challengeId, nonce, expiresAt }) {
+  return [
+    "#BAG wallet authorization",
+    `Purpose: ${purpose}`,
+    `Wallet: ${walletAddress}`,
+    `Merchant address: ${merchantAddress || "(not provided)"}`,
+    `Challenge ID: ${challengeId}`,
+    `Nonce: ${nonce}`,
+    `Expires: ${new Date(expiresAt).toISOString()}`,
+    "Network: Sepolia"
+  ].join("\n");
+}
+
+async function loadAccounts() {
+  try {
+    const raw = await readFile(ACCOUNT_FILE, "utf8");
+    const payload = JSON.parse(raw);
+
+    if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+      return payload;
+    }
+  } catch (err) {
+    if (!err || err.code !== "ENOENT") {
+      throw err;
+    }
+  }
+
+  return {};
+}
+
+async function saveAccounts(accounts) {
+  await mkdir(path.dirname(ACCOUNT_FILE), { recursive: true });
+  await writeFile(ACCOUNT_FILE, `${JSON.stringify(accounts, null, 2)}\n`, "utf8");
+}
+
+function pruneExpiredChallenges() {
+  const now = Date.now();
+  for (const [challengeId, challenge] of accountChallenges.entries()) {
+    if (!challenge || challenge.expiresAt <= now) {
+      accountChallenges.delete(challengeId);
+    }
+  }
+}
+
+function createAccountChallenge({ purpose, address, merchantAddress }) {
+  const walletAddress = normalizeEthAddress(address);
+  if (!walletAddress) {
+    throw new Error("A valid Sepolia wallet address is required.");
+  }
+
+  const normalizedMerchantAddress = normalizeDashAddress(merchantAddress);
+  if ((purpose === "register" || purpose === "update") && !normalizedMerchantAddress) {
+    throw new Error("A Dash merchant address is required.");
+  }
+
+  const challengeId = randomUUID();
+  const nonce = randomUUID().replace(/-/g, "");
+  const expiresAt = Date.now() + ACCOUNT_CHALLENGE_TTL_MS;
+  const message = buildChallengeMessage({
+    purpose,
+    walletAddress,
+    merchantAddress: normalizedMerchantAddress,
+    challengeId,
+    nonce,
+    expiresAt
+  });
+
+  accountChallenges.set(challengeId, {
+    challengeId,
+    purpose,
+    walletAddress,
+    merchantAddress: normalizedMerchantAddress,
+    nonce,
+    message,
+    expiresAt
+  });
+
+  return {
+    challengeId,
+    message,
+    expiresAt,
+    walletAddress,
+    merchantAddress: normalizedMerchantAddress
+  };
+}
+
+function consumeAccountChallenge(challengeId) {
+  pruneExpiredChallenges();
+
+  const challenge = accountChallenges.get(challengeId);
+  if (!challenge) {
+    throw new Error("Challenge expired. Please request a new wallet signature.");
+  }
+
+  accountChallenges.delete(challengeId);
+  return challenge;
+}
+
+async function getAccountByAddress(address) {
+  const accounts = await loadAccounts();
+  const walletAddress = normalizeEthAddress(address);
+
+  if (!walletAddress) {
+    return null;
+  }
+
+  return accounts[walletAddress.toLowerCase()] || null;
+}
+
+async function upsertAccount({ walletAddress, merchantAddress, createdAt, lastSignedInAt }) {
+  const accounts = await loadAccounts();
+  const normalizedWalletAddress = normalizeEthAddress(walletAddress);
+  if (!normalizedWalletAddress) {
+    throw new Error("A valid wallet address is required.");
+  }
+
+  const normalizedMerchantAddress = normalizeDashAddress(merchantAddress);
+  const now = new Date().toISOString();
+  const existing = accounts[normalizedWalletAddress.toLowerCase()] || null;
+
+  const account = {
+    walletAddress: normalizedWalletAddress,
+    merchantAddress: normalizedMerchantAddress,
+    network: "sepolia",
+    payoutNetwork: "dash",
+    createdAt: existing?.createdAt || createdAt || now,
+    updatedAt: now,
+    lastSignedInAt: lastSignedInAt || now
+  };
+
+  accounts[normalizedWalletAddress.toLowerCase()] = account;
+  await saveAccounts(accounts);
+  return account;
+}
+
+app.get("/auth/account/:address", async (req, res) => {
+  try {
+    const account = await getAccountByAddress(req.params.address);
+
+    if (!account) {
+      return res.status(404).json({ success: false, error: "Account not found." });
+    }
+
+    return res.json({ success: true, account });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || String(err) });
+  }
+});
+
+app.post("/auth/challenge", (req, res) => {
+  try {
+    const purpose = String(req.body?.purpose || "register").toLowerCase();
+    const address = req.body?.address;
+    const merchantAddress = req.body?.merchantAddress;
+
+    if (!["register", "signin", "update"].includes(purpose)) {
+      return res.status(400).json({ success: false, error: "Invalid auth purpose." });
+    }
+
+    const challenge = createAccountChallenge({ purpose, address, merchantAddress });
+    return res.json({ success: true, ...challenge });
+  } catch (err) {
+    return res.status(400).json({ success: false, error: err.message || String(err) });
+  }
+});
+
+app.post("/auth/register", async (req, res) => {
+  try {
+    const challengeId = String(req.body?.challengeId || "").trim();
+    const address = req.body?.address;
+    const merchantAddress = req.body?.merchantAddress;
+    const signature = String(req.body?.signature || "").trim();
+
+    if (!challengeId || !signature) {
+      return res.status(400).json({ success: false, error: "challengeId and signature are required." });
+    }
+
+    const challenge = consumeAccountChallenge(challengeId);
+    const walletAddress = normalizeEthAddress(address);
+    const normalizedMerchantAddress = normalizeDashAddress(merchantAddress);
+
+    if (!walletAddress || walletAddress.toLowerCase() !== challenge.walletAddress.toLowerCase()) {
+      return res.status(400).json({ success: false, error: "Wallet address does not match the challenge." });
+    }
+
+    if (!normalizedMerchantAddress) {
+      return res.status(400).json({ success: false, error: "Dash merchant address is required." });
+    }
+
+    const recoveredAddress = normalizeEthAddress(ethers.verifyMessage(challenge.message, signature));
+    if (!recoveredAddress || recoveredAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+      return res.status(401).json({ success: false, error: "Signature verification failed." });
+    }
+
+    const account = await upsertAccount({
+      walletAddress,
+      merchantAddress: normalizedMerchantAddress
+    });
+
+    return res.json({ success: true, status: challenge.purpose === "update" ? "updated" : "created", account });
+  } catch (err) {
+    return res.status(400).json({ success: false, error: err.message || String(err) });
+  }
+});
+
+app.post("/auth/sign-in", async (req, res) => {
+  try {
+    const challengeId = String(req.body?.challengeId || "").trim();
+    const address = req.body?.address;
+    const signature = String(req.body?.signature || "").trim();
+
+    if (!challengeId || !signature) {
+      return res.status(400).json({ success: false, error: "challengeId and signature are required." });
+    }
+
+    const challenge = consumeAccountChallenge(challengeId);
+    const walletAddress = normalizeEthAddress(address);
+
+    if (!walletAddress || walletAddress.toLowerCase() !== challenge.walletAddress.toLowerCase()) {
+      return res.status(400).json({ success: false, error: "Wallet address does not match the challenge." });
+    }
+
+    const recoveredAddress = normalizeEthAddress(ethers.verifyMessage(challenge.message, signature));
+    if (!recoveredAddress || recoveredAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+      return res.status(401).json({ success: false, error: "Signature verification failed." });
+    }
+
+    const existingAccount = await getAccountByAddress(walletAddress);
+    if (!existingAccount) {
+      return res.status(404).json({ success: false, error: "No account found for this wallet. Create one first." });
+    }
+
+    const account = await upsertAccount({
+      walletAddress,
+      merchantAddress: existingAccount.merchantAddress,
+      createdAt: existingAccount.createdAt,
+      lastSignedInAt: new Date().toISOString()
+    });
+
+    return res.json({ success: true, status: "signed-in", account });
+  } catch (err) {
+    return res.status(400).json({ success: false, error: err.message || String(err) });
+  }
+});
+
+async function getDashPaymentSummary(txid) {
+  const normalizedTxid = txid.trim();
+  const url = `${DASH_EXPLORER_BASE_URL}/dashboards/transaction/${normalizedTxid}`;
+  const response = await fetch(url, { headers: { accept: "application/json" } });
+
+  if (!response.ok) {
+    throw new Error(`Dash explorer request failed with HTTP ${response.status}`);
+  }
+
+  const payload = await response.json();
+  const txData = payload?.data?.[normalizedTxid] || payload?.data?.[normalizedTxid.toLowerCase()] || payload?.data?.[normalizedTxid.toUpperCase()];
+
+  if (!txData) {
+    throw new Error("Dash transaction not found on explorer.");
+  }
+
+  const outputs = Array.isArray(txData.outputs) ? txData.outputs : [];
+  const receivedSatoshis = outputs
+    .filter((output) => {
+      const recipient = String(output?.recipient || output?.recipient_address || "");
+      return recipient === DASH_MERCHANT_ADDRESS;
+    })
+    .reduce((sum, output) => sum + Number(output?.value || 0), 0);
+
+  const receivedDash = receivedSatoshis / 1e8;
+  const confirmations = Number(txData.transaction?.confirmations || 0);
+
+  return {
+    txid: normalizedTxid,
+    receivedDash,
+    confirmations,
+    meetsMinimum: receivedDash >= DASH_MIN_PAYMENT,
+    merchantAddress: DASH_MERCHANT_ADDRESS
+  };
+}
+
+app.get("/dash/payment-info", (_req, res) => {
+  if (!DASH_MERCHANT_ADDRESS) {
+    return res.status(500).json({
+      success: false,
+      error: "Set DASH_MERCHANT_ADDRESS in environment before accepting payments."
+    });
+  }
+
+  return res.json({
+    success: true,
+    network: DASH_NETWORK,
+    merchantAddress: DASH_MERCHANT_ADDRESS,
+    minimumDash: DASH_MIN_PAYMENT,
+    explorerTxPrefix: DASH_NETWORK === "mainnet"
+      ? "https://blockchair.com/dash/transaction/"
+      : "https://blockchair.com/dash/testnet/transaction/"
+  });
+});
+
+app.post("/dash/verify-payment", async (req, res) => {
+  try {
+    if (!DASH_MERCHANT_ADDRESS) {
+      return res.status(500).json({
+        success: false,
+        error: "Set DASH_MERCHANT_ADDRESS in environment before verifying payments."
+      });
+    }
+
+    const txid = String(req.body?.txid || "").trim();
+    if (!isValidDashTxid(txid)) {
+      return res.status(400).json({ success: false, error: "Invalid Dash txid format." });
+    }
+
+    const summary = await getDashPaymentSummary(txid);
+    return res.json({ success: true, ...summary });
+  } catch (err) {
+    return res.status(502).json({ success: false, error: err.message || String(err) });
+  }
+});
+
 app.post("/upload-image", async (req, res) => {
   try {
     const { imageData } = req.body;
@@ -85,10 +444,26 @@ app.post("/upload-image", async (req, res) => {
 
 app.post("/mint", async (req, res) => {
   try {
-    const { bagName, condition, material, imageURI } = req.body;
+    const { bagName, condition, material, imageURI, dashTxId } = req.body;
 
-    if (!bagName || !condition || !material || !imageURI) {
-      return res.status(400).json({ error: "bagName, condition, material and imageURI are required." });
+    if (!bagName || !condition || !material || !imageURI || !dashTxId) {
+      return res.status(400).json({ error: "bagName, condition, material, imageURI and dashTxId are required." });
+    }
+
+    if (!DASH_MERCHANT_ADDRESS) {
+      return res.status(500).json({ success: false, error: "Set DASH_MERCHANT_ADDRESS before minting with payments." });
+    }
+
+    if (!isValidDashTxid(dashTxId)) {
+      return res.status(400).json({ success: false, error: "Invalid Dash txid format." });
+    }
+
+    const payment = await getDashPaymentSummary(dashTxId);
+    if (!payment.meetsMinimum) {
+      return res.status(400).json({
+        success: false,
+        error: `Dash payment below minimum. Received ${payment.receivedDash} DASH, require at least ${DASH_MIN_PAYMENT} DASH.`
+      });
     }
 
     const { rpcUrl, contractAddress, privateKey } = getConfig(true);
@@ -102,7 +477,8 @@ app.post("/mint", async (req, res) => {
       bagName,
       condition,
       material,
-      imageURI
+      imageURI,
+      dashTxId
     });
 
     // Decode ERC-721 Transfer log to return minted tokenId in API response.
@@ -129,6 +505,7 @@ app.post("/mint", async (req, res) => {
     return res.json({
       success: true,
       txHash: result.hash,
+      dashTxId,
       tokenId,
       blockNumber: result.receipt?.blockNumber ?? null
     });
@@ -156,7 +533,7 @@ app.get("/read", async (req, res) => {
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     const ABI = [
       "function ownerOf(uint256 tokenId) view returns (address)",
-      "function getBagMetadata(uint256) view returns (tuple(string bagName,string condition,string material,string imageURI))"
+      "function getBagMetadata(uint256) view returns (tuple(string bagName,string condition,string material,string imageURI,string dashTxId))"
     ];
 
     const contract = new ethers.Contract(contractAddress, ABI, provider);
@@ -180,7 +557,8 @@ app.get("/read", async (req, res) => {
         bagName: metadata.bagName,
         condition: metadata.condition,
         material: metadata.material,
-        imageURI: metadata.imageURI
+        imageURI: metadata.imageURI,
+        dashTxId: metadata.dashTxId
       }
     });
   } catch (err) {
@@ -206,7 +584,7 @@ app.get("/catalog", async (req, res) => {
 
     const ABI = [
       "function ownerOf(uint256 tokenId) view returns (address)",
-      "function getBagMetadata(uint256) view returns (tuple(string bagName,string condition,string material,string imageURI))",
+      "function getBagMetadata(uint256) view returns (tuple(string bagName,string condition,string material,string imageURI,string dashTxId))",
       "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
     ];
 
@@ -248,6 +626,7 @@ app.get("/catalog", async (req, res) => {
           condition: meta.condition,
           material: meta.material,
           imageURI: meta.imageURI || "",
+          dashTxId: meta.dashTxId || "",
           owner
         });
       } catch (e) {
