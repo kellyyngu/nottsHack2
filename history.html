@@ -137,15 +137,25 @@
       });
     }
 
-    async function loadHistory() {
-      const user = historyUserInput.value.trim();
-      if (!user) {
-        showHistoryStatus("Enter a wallet address or bidder name.", true);
-        return;
+    async function loadCatalogFallback() {
+      const res = await fetch("/catalog");
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to load catalog fallback");
       }
 
+      renderListedItems(data.items || []);
+      renderBidItems([]);
+      showHistoryStatus("Loaded listed items from the marketplace.");
+    }
+
+    async function loadHistory() {
+      const user = historyUserInput.value.trim();
+
       try {
-        const res = await fetch(`/history?user=${encodeURIComponent(user)}`);
+        const url = user ? `/history?user=${encodeURIComponent(user)}` : "/history";
+        const res = await fetch(url);
         const data = await res.json();
 
         if (!res.ok || !data.success) {
@@ -154,15 +164,25 @@
 
         renderListedItems(data.listedItems || []);
         renderBidItems(data.bidItems || []);
-        showHistoryStatus("History loaded successfully.");
+
+        if (!historyUserInput.value.trim() && data.latestListedItem) {
+          renderListedItems([data.latestListedItem]);
+        }
+
+        showHistoryStatus(user ? "History loaded successfully." : "Showing your listed items.");
       } catch (err) {
-        showHistoryStatus(err.message || String(err), true);
-        renderListedItems([]);
-        renderBidItems([]);
+        try {
+          await loadCatalogFallback();
+        } catch (fallbackErr) {
+          showHistoryStatus(fallbackErr.message || err.message || String(err), true);
+          renderListedItems([]);
+          renderBidItems([]);
+        }
       }
     }
 
     document.getElementById("loadHistoryBtn").addEventListener("click", loadHistory);
+    loadHistory();
   </script>
 </body>
 </html>

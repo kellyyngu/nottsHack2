@@ -1,185 +1,82 @@
-# Luxury Passport NFT
+# Dash Wallet Payments
 
-Production-style local demo for minting and reading ERC-721 bag passports without MetaMask.
+This project has been reduced to a Dash L1 payment flow.
 
-The app uses a backend signer (server-side private key) to mint NFTs, then exposes read endpoints used by a simple web UI.
+It uses a mnemonic-derived Dash wallet to generate unique receive addresses for invoices, then checks incoming payments through a public block explorer.
 
-## Overview
+## What it does
 
-Architecture flow:
+- Derives a Dash receive address from `DASH_MNEMONIC`
+- Creates unique invoice addresses for checkout requests
+- Stores invoices locally in `data/wallet-payments.json`
+- Verifies payment status against a public explorer
 
-`index.html -> Express API (/mint, /read) -> ethers.js -> Hardhat local chain`
+## Setup
 
-Core components:
-
-- `contracts/LuxuryPassportNFT.sol`: ERC-721 contract with bag metadata (`bagName`, `condition`, `material`)
-- `server.js`: Express server for minting and reading token data
-- `mint.js`: Mint helper used by the backend
-- `deploy.js`: Contract deployment script
-- `index.html`: Frontend UI served by Express
-
-## Prerequisites
-
-- Node.js 18+ (Node 20+ recommended)
-- npm
-
-## Install
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-## Environment Variables
+Create a `.env` file with at least:
 
-You can set environment variables directly in PowerShell (or use `.env.example` as reference).
-
-- `RPC_URL`: JSON-RPC endpoint (default local Hardhat node)
-- `CONTRACT_ADDRESS`: deployed NFT contract address
-- `PRIVATE_KEY`: backend signer private key (for minting)
-- `PORT`: Express server port
-
-PowerShell example:
-
-```powershell
-$env:RPC_URL="http://127.0.0.1:8545"
-$env:CONTRACT_ADDRESS="0xYOUR_DEPLOYED_CONTRACT"
-$env:PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
-$env:PORT="3003"
+```env
+DASH_NETWORK=testnet
+DASH_MNEMONIC=your 12 or 24 word mnemonic here
+PORT=3000
 ```
 
-## Run Locally (End-to-End)
+Optional settings:
 
-1. Start local blockchain:
-
-```bash
-npx hardhat node
+```env
+DASH_WALLET_PASSPHRASE=
+DASH_DERIVATION_PATH=m/44'/1'/0'/0
+DASH_EXPLORER_BASE_URL=https://api.blockchair.com
+DASH_EXPLORER_NETWORK_PREFIX=dash
 ```
 
-2. Deploy contract (in a second terminal):
-
-```bash
-npm run deploy:node
-```
-
-3. Copy the deployed address and set env vars (example above).
-
-4. Start backend:
+## Run
 
 ```bash
 npm start
 ```
 
-5. Open UI:
+Open `http://localhost:3000`.
 
-`http://localhost:<PORT>/index.html`
+## API
 
-Important: open the frontend through the same backend port so `/mint` and `/read` resolve correctly.
+### `GET /health`
 
-## Available Scripts
+Returns server status and the primary receive address.
 
-- `npm run compile`: compile Solidity contracts with Hardhat
-- `npm run deploy:localhost`: deploy using Hardhat runtime on `localhost`
-- `npm run deploy:node`: deploy using `deploy.js`
-- `npm start`: start Express backend
+### `GET /api/wallet`
 
-## API Reference
+Returns the active network and receive address.
 
-### Health Check
+### `GET /api/invoices`
 
-`GET /health`
+Lists saved invoices.
 
-Response:
+### `POST /api/invoices`
 
-```json
-{ "ok": true }
-```
-
-### Mint NFT
-
-`POST /mint`
+Creates a payment request.
 
 Request body:
 
 ```json
 {
-  "bagName": "Lady Dior",
-  "condition": "Excellent",
-  "material": "Lambskin"
+  "amountDash": 0.25,
+  "reference": "Order #1042",
+  "memo": "Optional note"
 }
 ```
 
-Success response:
+### `GET /api/invoices/:id/verify`
 
-```json
-{
-  "success": true,
-  "txHash": "0x...",
-  "tokenId": "0",
-  "blockNumber": 6
-}
-```
+Re-checks the invoice address against the explorer and updates the stored payment state.
 
-### Read NFT Metadata
+## Notes
 
-`GET /read?tokenId=<id>`
-
-Success response:
-
-```json
-{
-  "success": true,
-  "tokenId": 0,
-  "owner": "0x...",
-  "metadata": {
-    "bagName": "Lady Dior",
-    "condition": "Excellent",
-    "material": "Lambskin"
-  }
-}
-```
-
-If token is not minted, API returns `404`:
-
-```json
-{
-  "success": false,
-  "error": "Token 4 does not exist (not minted yet)."
-}
-```
-
-## Quick Verification Commands (PowerShell)
-
-```powershell
-Invoke-RestMethod -Method Get -Uri "http://localhost:3003/health"
-Invoke-RestMethod -Method Post -Uri "http://localhost:3003/mint" -ContentType "application/json" -Body '{"bagName":"Speedy 25","condition":"Very Good","material":"Canvas"}'
-Invoke-RestMethod -Method Get -Uri "http://localhost:3003/read?tokenId=0"
-curl.exe -i "http://localhost:3003/read?tokenId=999"
-```
-
-## How to get `CONTRACT_ADDRESS` and `PRIVATE_KEY`
-
-Follow these steps to obtain the values you need to set in your environment.
-
-- CONTRACT_ADDRESS
-  - When you deploy the contract with `npm run deploy:node` (or `node deploy.js`) the deploy script prints the deployed address to the console. Example output:
-
-```text
-LuxuryPassportNFT deployed to: 0xe7f1725E7734CE288F8367e1Bb143E90dd3F0521
-```
-
-  - Copy that address and set `CONTRACT_ADDRESS` to it.
-
-- PRIVATE_KEY (local development only)
-  - If you run a local Hardhat node with `npx hardhat node`, the node prints unlocked accounts and their private keys; copy the one you want to use. Example Hardhat console snippet:
-
-```text
-Accounts
-========
-WARNING: These accounts, and their private keys, are publicly known. Any funds sent to them on Mainnet WILL BE LOST.
-
-Account #0: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 (10000.0 ETH)
-Private Key: 0xac0974bec39a28e36ba5b6b4d238ff944bacb478cbed5efcae784d7bf4f2gg90
-```
-
-  - Copy the `Private Key:` value and set `PRIVATE_KEY` to it.
-
+- This repo no longer depends on Dash Platform identities or contracts.
+- The remaining NFT and marketplace files are legacy and are not used by the wallet payment server.
