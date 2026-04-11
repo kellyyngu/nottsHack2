@@ -1,7 +1,3 @@
-# ML Pipeline (Split by Step)
-
-This folder extracts your notebook into separate runnable scripts.
-
 ## Files
 
 - `step1_bag_detection.py`: handbag detection dataset prep, training, and crop inference
