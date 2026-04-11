@@ -53,8 +53,8 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     train_parser = subparsers.add_parser("train", help="Train the material classifier")
-    train_parser.add_argument("--data", default="C:\\Users\\User\\Downloads\\nottsHack4\\ml_pipeline\\materials_dataset")
-    train_parser.add_argument("--project", default="C:\\Users\\User\\Downloads\\nottsHack4\\ml_pipeline\\materials_dataset")  # change file path
+    train_parser.add_argument("--data", default="C:\\Users\\user\\Documents\\GitHub\\nottsHack2\\ml_pipeline\\data\\materials_cls")
+    train_parser.add_argument("--project", default="C:\\Users\\user\\Documents\\GitHub\\nottsHack2\\ml_pipeline\\data\\materials_cls")  # change file path
     train_parser.add_argument("--name", default="material_classifier")
     train_parser.add_argument("--epochs", type=int, default=50)
     train_parser.add_argument("--imgsz", type=int, default=224)

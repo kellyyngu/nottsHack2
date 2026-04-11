@@ -3,7 +3,7 @@ import { fileURLToPath } from "url";
 
 // Minimal ABI containing only the safeMint function.
 const LUXURY_PASSPORT_ABI = [
-  "function safeMint(address to, string bagName, string condition, string material, string imageURI) external returns (uint256 tokenId)"
+  "function safeMint(address to, string bagName, string condition, string material, string imageURI, uint256 startBidWei, uint256 bidEndTime) external returns (uint256 tokenId)"
 ];
 
 /**
@@ -17,6 +17,8 @@ const LUXURY_PASSPORT_ABI = [
  * @param {string} params.condition Bag condition
  * @param {string} params.material Bag material
  * @param {string} params.imageURI Bag image URI/data URI
+ * @param {bigint} params.startBidWei Starting bid in wei
+ * @param {bigint} params.bidEndTime Auction end timestamp (unix seconds)
  * @returns {Promise<{hash: string, receipt: any}>}
  */
 export async function mintLuxuryPassport({
@@ -26,11 +28,13 @@ export async function mintLuxuryPassport({
   bagName,
   condition,
   material,
-  imageURI
+  imageURI,
+  startBidWei,
+  bidEndTime
 }) {
   const contract = new ethers.Contract(contractAddress, LUXURY_PASSPORT_ABI, signer);
 
-  const tx = await contract.safeMint(to, bagName, condition, material, imageURI);
+  const tx = await contract.safeMint(to, bagName, condition, material, imageURI, startBidWei, bidEndTime);
   const receipt = await tx.wait();
 
   return {
@@ -63,7 +67,9 @@ if (__filename === process.argv[1]) {
     bagName: "Lady Dior",
     condition: "Excellent",
     material: "Lambskin",
-    imageURI: "https://example.com/lady-dior.png"
+    imageURI: "https://example.com/lady-dior.png",
+    startBidWei: ethers.parseEther("0.1"),
+    bidEndTime: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) // 1 week from now
   });
 
   console.log("Mint tx hash:", result.hash);

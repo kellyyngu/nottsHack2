@@ -9,7 +9,7 @@ from engine import EcoTraceEngine
 WEIGHTS = {
     'gatekeeper': 'weights/bag_detector.pt',
     'security':   'weights/ai_detector_weights.pth',
-    'material':   'weights/yolo11n-material-cls.pt',
+    'material':   'weights/material-cls.pt',
     'defect':     'weights/leather-defect.pt'
 }
 

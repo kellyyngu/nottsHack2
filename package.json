@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@openzeppelin/contracts": "^4.9.3",
+    "dash": "^6.0.1",
     "express": "^4.21.2"
   }
 }

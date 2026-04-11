@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Your Item History</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="market-body">
+  <div class="page-frame">
+    <header class="site-topbar">
+      <div class="site-brand-wrap">
+        <div class="site-brand">L&L</div>
+        <div class="site-subtitle">Luxury Passport Marketplace</div>
+      </div>
+
+      <nav class="site-nav">
+        <a href="index.html">HOME</a>
+        <a href="marketplace.html">MARKETPLACE</a>
+        <a href="mint.html">SELL</a>
+        <a href="history.html" class="active">HISTORY</a>
+      </nav>
+    </header>
+
+    <section class="history-hero editorial-card">
+      <h1 class="page-title">YOUR HISTORY</h1>
+      <p class="page-intro">Find items you listed and items you have bid on.</p>
+
+      <div class="history-controls">
+        <input id="historyUser" class="form-input" type="text" placeholder="Wallet address or bidder name" />
+        <button id="loadHistoryBtn" class="ghost-btn">Load History</button>
+      </div>
+
+      <div id="historyStatus" class="status-box" aria-live="polite"></div>
+    </section>
+
+    <section class="history-section">
+      <h2 class="history-title">Items You Listed</h2>
+      <div id="listedGrid" class="gallery-grid"></div>
+      <div id="listedEmpty" class="empty-state" style="display:none;">No listed items found.</div>
+    </section>
+
+    <section class="history-section">
+      <h2 class="history-title">Items You Bid On</h2>
+      <div id="bidGrid" class="history-bid-grid"></div>
+      <div id="bidEmpty" class="empty-state" style="display:none;">No bid activity found.</div>
+    </section>
+  </div>
+
+  <script>
+    const historyUserInput = document.getElementById("historyUser");
+    const historyStatus = document.getElementById("historyStatus");
+
+    function showHistoryStatus(message, isError = false) {
+      historyStatus.textContent = message;
+      historyStatus.className = `status-box ${isError ? "err" : "ok"}`;
+    }
+
+    function renderListedItems(items) {
+      const grid = document.getElementById("listedGrid");
+      const empty = document.getElementById("listedEmpty");
+
+      grid.innerHTML = "";
+      if (!items.length) {
+        empty.style.display = "block";
+        return;
+      }
+
+      empty.style.display = "none";
+      items.forEach((item) => {
+        const card = document.createElement("article");
+        card.className = "gallery-card";
+
+        const imageSrc = item.imageURI && item.imageURI.trim() !== ""
+          ? item.imageURI
+          : "https://via.placeholder.com/420x420?text=Luxury+Bag";
+
+        card.innerHTML = `
+          <div class="gallery-meta">
+            <div class="item-category">${item.condition || "Listed Item"}</div>
+            <div class="item-header-row">
+              <h3>${item.bagName || "Untitled Bag"}</h3>
+              <span>Start: ${item.startBidEth || "0"} ETH</span>
+            </div>
+          </div>
+          <a href="item.html?id=${item.tokenId}" class="image-link">
+            <img src="${imageSrc}" alt="${item.bagName || "Luxury item"}" />
+          </a>
+          <div class="gallery-footer">
+            <div class="item-tags">
+              <span>${item.material || "Unknown Material"}</span>
+              <span>#${item.tokenId}</span>
+            </div>
+            <div class="item-actions">
+              <a href="item.html?id=${item.tokenId}" class="text-link">View</a>
+            </div>
+          </div>
+        `;
+
+        grid.appendChild(card);
+      });
+    }
+
+    function renderBidItems(entries) {
+      const grid = document.getElementById("bidGrid");
+      const empty = document.getElementById("bidEmpty");
+
+      grid.innerHTML = "";
+      if (!entries.length) {
+        empty.style.display = "block";
+        return;
+      }
+
+      empty.style.display = "none";
+
+      entries.forEach((entry) => {
+        const item = entry.item;
+        const bids = Array.isArray(entry.bids) ? entry.bids : [];
+        const latestBid = bids[0];
+
+        const card = document.createElement("article");
+        card.className = "history-bid-card editorial-card";
+
+        card.innerHTML = `
+          <div class="history-bid-header">
+            <h3>${item.bagName || "Untitled Bag"} <span>#${item.tokenId}</span></h3>
+            <a href="item.html?id=${item.tokenId}" class="text-link">Open Item</a>
+          </div>
+          <p class="history-bid-line">Latest your bid: ${latestBid ? latestBid.amount : "-"}</p>
+          <p class="history-bid-line">Total bids by you: ${bids.length}</p>
+          <ul class="history-bid-list">
+            ${bids.slice(0, 5).map((bid) => `<li>${bid.amount} at ${new Date(bid.timestamp).toLocaleString()}</li>`).join("")}
+          </ul>
+        `;
+
+        grid.appendChild(card);
+      });
+    }
+
+    async function loadHistory() {
+      const user = historyUserInput.value.trim();
+      if (!user) {
+        showHistoryStatus("Enter a wallet address or bidder name.", true);
+        return;
+      }
+
+      try {
+        const res = await fetch(`/history?user=${encodeURIComponent(user)}`);
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Failed to load history");
+        }
+
+        renderListedItems(data.listedItems || []);
+        renderBidItems(data.bidItems || []);
+        showHistoryStatus("History loaded successfully.");
+      } catch (err) {
+        showHistoryStatus(err.message || String(err), true);
+        renderListedItems([]);
+        renderBidItems([]);
+      }
+    }
+
+    document.getElementById("loadHistoryBtn").addEventListener("click", loadHistory);
+  </script>
+</body>
+</html>

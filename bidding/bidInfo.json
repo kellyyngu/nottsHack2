@@ -1,0 +1,24 @@
+{
+  "bid": {
+    "indices": [ {"properties": [{"$ownerId": "asc"}, {"auctionId": "asc"}]} ],
+    "properties": {
+      "auctionId": { "type": "string" },
+      "amount": { "type": "number", "minimum": 0 },
+      "bidderName": { "type": "string", "minLength": 1 },
+      "timestamp": { "type": "number" }
+    },
+    "required": ["auctionId", "amount", "bidderName", "timestamp"],
+    "additionalProperties": false
+  },
+  "comment": {
+    "indices": [ {"properties": [{"$ownerId": "asc"}, {"tokenId": "asc"}]} ],
+    "properties": {
+      "tokenId": { "type": "number", "minimum": 0 },
+      "commenterName": { "type": "string", "minLength": 1 },
+      "message": { "type": "string", "minLength": 1, "maxLength": 1000 },
+      "timestamp": { "type": "number" }
+    },
+    "required": ["tokenId", "commenterName", "message", "timestamp"],
+    "additionalProperties": false
+  }
+}

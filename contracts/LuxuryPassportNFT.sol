@@ -11,6 +11,8 @@ contract LuxuryPassportNFT is ERC721 {
         string condition;
         string material;
         string imageURI;
+        uint256 startBidWei;
+        uint256 bidEndTime;
     }
 
     uint256 private _nextTokenId;
@@ -24,13 +26,17 @@ contract LuxuryPassportNFT is ERC721 {
     /// @param condition Condition of the bag.
     /// @param material Material of the bag.
     /// @param imageURI Image URI or data URI for displaying the bag image.
+    /// @param startBidWei Starting bid amount in wei.
+    /// @param bidEndTime Auction end timestamp (unix seconds).
     /// @return tokenId The newly minted token ID.
     function safeMint(
         address to,
         string calldata bagName,
         string calldata condition,
         string calldata material,
-        string calldata imageURI
+        string calldata imageURI,
+        uint256 startBidWei,
+        uint256 bidEndTime
     ) external returns (uint256 tokenId) {
         tokenId = _nextTokenId;
         _nextTokenId += 1;
@@ -40,7 +46,9 @@ contract LuxuryPassportNFT is ERC721 {
             bagName: bagName,
             condition: condition,
             material: material,
-            imageURI: imageURI
+            imageURI: imageURI,
+            startBidWei: startBidWei,
+            bidEndTime: bidEndTime
         });
     }
 

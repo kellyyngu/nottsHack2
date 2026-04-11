@@ -14,9 +14,10 @@
     </div>
 
     <nav class="site-nav">
-      <a href="index.html".html">HOME</a>
+      <a href="index.html">HOME</a>
       <a href="marketplace.html">MARKETPLACE</a>
       <a href="mint.html" class="active">SELL</a>
+      <a href="history.html">HISTORY</a>
     </nav>
   </header>
 
@@ -39,6 +40,12 @@
 
         <label class="form-label" for="material">MATERIAL</label>
         <input class="form-input" id="material" placeholder="Lambskin" />
+
+        <label class="form-label" for="startBid">START BID (ETH)</label>
+        <input class="form-input" id="startBid" type="number" min="0" step="0.0001" placeholder="0.10" />
+
+        <label class="form-label" for="bidEndTime">BID END TIME</label>
+        <input class="form-input" id="bidEndTime" type="datetime-local" />
 
         <button id="mintBtn" type="button" class="primary-pill-btn">MINT NFT</button>
 
@@ -405,11 +412,32 @@
       const bagName = document.getElementById("bagName").value.trim();
       const condition = document.getElementById("condition").value.trim();
       const material = document.getElementById("material").value.trim();
+      const startBid = document.getElementById("startBid").value.trim();
+      const bidEndTimeRaw = document.getElementById("bidEndTime").value;
 
-      if (!bagName || !condition || !material) {
+      if (!bagName || !condition || !material || !startBid || !bidEndTimeRaw) {
         showStatus("Please fill all fields.", true);
         return;
       }
+
+      const startBidNumber = Number(startBid);
+      if (!Number.isFinite(startBidNumber) || startBidNumber < 0) {
+        showStatus("Start bid must be a valid non-negative number.", true);
+        return;
+      }
+
+      const bidEndDate = new Date(bidEndTimeRaw);
+      if (Number.isNaN(bidEndDate.getTime())) {
+        showStatus("Please enter a valid bid end time.", true);
+        return;
+      }
+
+      if (bidEndDate.getTime() <= Date.now()) {
+        showStatus("Bid end time must be in the future.", true);
+        return;
+      }
+
+      const bidEndTime = bidEndDate.toISOString();
 
       if (!capturedImageData) {
         showStatus("Please upload or capture an image before minting.", true);
@@ -442,7 +470,7 @@
         const res = await fetch("/mint", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bagName, condition, material, imageURI: uploadData.imageURI })
+          body: JSON.stringify({ bagName, condition, material, startBid, bidEndTime, imageURI: uploadData.imageURI })
         });
 
         const data = await res.json();
@@ -458,9 +486,35 @@
 
         showStatus(`Success! Minted. Tx hash: ${data.txHash}${mintedTokenPart}`);
 
+        const mintResult = {
+          txHash: data.txHash,
+          tokenId: data.tokenId,
+          blockNumber: data.blockNumber,
+          bagName,
+          condition,
+          material,
+          startBid,
+          bidEndTime,
+          imageURI: uploadData.imageURI
+        };
+
+        sessionStorage.setItem("lastMintResult", JSON.stringify(mintResult));
+        viewResultEl.className = "view-result-box show";
+        viewResultEl.textContent = [
+          `Last mint saved`,
+          `Tx hash: ${data.txHash}`,
+          `Token ID: ${data.tokenId ?? "-"}`,
+          `Start bid: ${startBid} ETH`,
+          `Bid ends: ${bidEndTime}`
+        ].join("\n");
+
+        document.getElementById("tokenId").value = data.tokenId ?? "";
+
         document.getElementById("bagName").value = "";
         document.getElementById("condition").value = "";
         document.getElementById("material").value = "";
+        document.getElementById("startBid").value = "";
+        document.getElementById("bidEndTime").value = "";
         capturedImageData = null;
         imageApproved = false;
         document.getElementById('capturedImage').style.display = 'none';
@@ -476,7 +530,6 @@
     }
 
     mintBtn.addEventListener("click", mintNftFlow);
-    mintBtn.onclick = mintNftFlow;
 
     viewBtn.addEventListener("click", async () => {
       const tokenIdValue = document.getElementById("tokenId").value.trim();
@@ -515,7 +568,9 @@
           `Owner: ${data.owner}`,
           `bagName: ${data.metadata.bagName}`,
           `condition: ${data.metadata.condition}`,
-          `material: ${data.metadata.material}`
+          `material: ${data.metadata.material}`,
+          `startBid: ${data.metadata.startBidEth} ETH (${data.metadata.startBidWei} wei)`,
+          `bidEndTime: ${data.metadata.bidEndTimeIso}`
         ].join("\n");
       } catch (err) {
         viewResultEl.textContent = `Read failed: ${err.message || String(err)}`;

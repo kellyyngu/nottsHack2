@@ -17,6 +17,7 @@
       <a href="home.html">HOME</a>
       <a href="index.html" class="active">MARKETPLACE</a>
       <a href="mint.html">SELL</a>
+      <a href="history.html">HISTORY</a>
     </nav>
   </header>
 
@@ -41,23 +42,297 @@
           <div class="item-meta-row"><strong>Token ID</strong><span id="metaTokenId">-</span></div>
           <div class="item-meta-row"><strong>Condition</strong><span id="metaCondition">-</span></div>
           <div class="item-meta-row"><strong>Material</strong><span id="metaMaterial">-</span></div>
+          <div class="item-meta-row"><strong>Start Bid</strong><span id="metaStartBid">-</span></div>
+          <div class="item-meta-row"><strong>Bid Ends</strong><span id="metaBidEnds">-</span></div>
           <div class="item-meta-row"><strong>Owner</strong><span id="metaOwner">-</span></div>
+          <div class="item-meta-row"><strong>Highest Bid</strong><span id="metaHighestBid">No bids yet</span></div>
         </div>
+
+        <section class="item-bid-panel">
+          <h2>Place A Bid</h2>
+          <p class="item-bid-help">Submit a new highest bid for this item.</p>
+
+          <form id="bidForm">
+            <label class="form-label" for="bidderName">Bidder Name</label>
+            <input id="bidderName" class="form-input" type="text" placeholder="Your name" required />
+
+            <label class="form-label" for="bidAmount">Bid Amount</label>
+            <input id="bidAmount" class="form-input" type="number" min="0.0001" step="0.0001" placeholder="e.g. 1.25" required />
+
+            <button id="submitBidBtn" type="submit" class="primary-pill-btn">SUBMIT BID</button>
+          </form>
+
+          <div id="bidStatus" class="status-box" aria-live="polite"></div>
+
+          <div class="item-bid-history">
+            <h3>Recent Bids</h3>
+            <ul id="bidHistoryList" class="bid-history-list"></ul>
+          </div>
+        </section>
+
+        
 
         <div class="item-actions">
           <a href="index.html" class="hero-btn">BACK TO MARKETPLACE</a>
         </div>
       </section>
     </div>
+
+    <section class="item-comment-panel">
+          <h2>Comments</h2>
+          <p class="item-comment-help">Leave a note about this item. Comments are stored on Dash Platform.</p>
+
+          <form id="commentForm">
+            <label class="form-label" for="commenterName">Your Name</label>
+            <input id="commenterName" class="form-input" type="text" placeholder="Your name" required />
+
+            <label class="form-label" for="commentMessage">Comment</label>
+            <textarea id="commentMessage" class="form-textarea" rows="4" placeholder="Write a comment..." required></textarea>
+
+            <button id="submitCommentBtn" type="submit" class="primary-pill-btn">POST COMMENT</button>
+          </form>
+
+          <div id="commentStatus" class="status-box" aria-live="polite"></div>
+
+          <div class="item-comment-history">
+            <h3>Recent Comments</h3>
+            <ul id="commentHistoryList" class="comment-history-list"></ul>
+          </div>
+    </section>
   </main>
 
   <script>
     const params = new URLSearchParams(window.location.search);
     const tokenId = params.get("id");
+    const bidStatus = document.getElementById("bidStatus");
+    const commentStatus = document.getElementById("commentStatus");
+
+    function showBidStatus(message, isError = false) {
+      bidStatus.textContent = message;
+      bidStatus.className = `status-box ${isError ? "err" : "ok"}`;
+    }
+
+    function showCommentStatus(message, isError = false) {
+      commentStatus.textContent = message;
+      commentStatus.className = `status-box ${isError ? "err" : "ok"}`;
+    }
+
+    function formatBidLine(bid) {
+      const date = new Date(bid.timestamp || Date.now());
+      const bidder = bid.bidderName || "Anonymous";
+      return `${bidder} - ${bid.amount} (${date.toLocaleString()})`;
+    }
+
+    function formatCommentLine(comment) {
+      const date = new Date(comment.timestamp || Date.now());
+      const commenter = comment.commenterName || "Anonymous";
+      return `${commenter}: ${comment.message} (${date.toLocaleString()})`;
+    }
+
+    function renderItemImage(imageURI, bagName) {
+      const imageEl = document.getElementById("itemImage");
+      const fallbackSrc = "https://via.placeholder.com/900x900?text=Luxury+Bag";
+      const cleanUri = typeof imageURI === "string" ? imageURI.trim() : "";
+
+      imageEl.alt = bagName ? `${bagName} image` : "NFT item";
+      imageEl.onerror = () => {
+        imageEl.onerror = null;
+        imageEl.src = fallbackSrc;
+      };
+
+      imageEl.src = cleanUri || fallbackSrc;
+    }
+
+    async function loadBids() {
+      const highestBidEl = document.getElementById("metaHighestBid");
+      const bidHistoryEl = document.getElementById("bidHistoryList");
+
+      if (!tokenId) {
+        highestBidEl.textContent = "No token selected";
+        bidHistoryEl.innerHTML = "";
+        return;
+      }
+
+      try {
+        const res = await fetch(`/bids?tokenId=${encodeURIComponent(tokenId)}`);
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Failed to load bids");
+        }
+
+        if (data.highestBid) {
+          highestBidEl.textContent = `${data.highestBid.amount} by ${data.highestBid.bidderName}`;
+        } else {
+          highestBidEl.textContent = "No bids yet";
+        }
+
+        bidHistoryEl.innerHTML = "";
+        const bids = Array.isArray(data.bids) ? data.bids.slice(0, 8) : [];
+        if (!bids.length) {
+          const li = document.createElement("li");
+          li.textContent = "No bids yet. Be the first bidder.";
+          bidHistoryEl.appendChild(li);
+          return;
+        }
+
+        bids.forEach((bid) => {
+          const li = document.createElement("li");
+          li.textContent = formatBidLine(bid);
+          bidHistoryEl.appendChild(li);
+        });
+      } catch (err) {
+        highestBidEl.textContent = "Unavailable";
+        bidHistoryEl.innerHTML = "";
+        const li = document.createElement("li");
+        li.textContent = "Failed to load bids.";
+        bidHistoryEl.appendChild(li);
+      }
+    }
+
+    async function loadComments() {
+      const commentHistoryEl = document.getElementById("commentHistoryList");
+
+      if (!tokenId) {
+        commentHistoryEl.innerHTML = "";
+        return;
+      }
+
+      try {
+        const res = await fetch(`/comments?tokenId=${encodeURIComponent(tokenId)}`);
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Failed to load comments");
+        }
+
+        commentHistoryEl.innerHTML = "";
+        const comments = Array.isArray(data.comments) ? data.comments.slice(-10).reverse() : [];
+
+        if (!comments.length) {
+          const li = document.createElement("li");
+          li.textContent = "No comments yet. Be the first to leave one.";
+          commentHistoryEl.appendChild(li);
+          return;
+        }
+
+        comments.forEach((comment) => {
+          const li = document.createElement("li");
+          li.textContent = formatCommentLine(comment);
+          commentHistoryEl.appendChild(li);
+        });
+      } catch (err) {
+        commentHistoryEl.innerHTML = "";
+        const li = document.createElement("li");
+        li.textContent = "Failed to load comments.";
+        commentHistoryEl.appendChild(li);
+      }
+    }
+
+    async function submitBid(event) {
+      event.preventDefault();
+
+      if (!tokenId) {
+        showBidStatus("No token selected.", true);
+        return;
+      }
+
+      const bidderName = document.getElementById("bidderName").value.trim();
+      const amount = Number(document.getElementById("bidAmount").value);
+
+      if (!bidderName) {
+        showBidStatus("Please enter bidder name.", true);
+        return;
+      }
+
+      if (!Number.isFinite(amount) || amount <= 0) {
+        showBidStatus("Please enter a valid positive bid amount.", true);
+        return;
+      }
+
+      const submitBtn = document.getElementById("submitBidBtn");
+      submitBtn.disabled = true;
+
+      try {
+        const res = await fetch("/bids", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tokenId: Number(tokenId),
+            amount,
+            bidderName
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Failed to submit bid");
+        }
+
+        showBidStatus("Bid submitted successfully.");
+        document.getElementById("bidAmount").value = "";
+        await loadBids();
+      } catch (err) {
+        showBidStatus(err.message || String(err), true);
+      } finally {
+        submitBtn.disabled = false;
+      }
+    }
+
+    async function submitComment(event) {
+      event.preventDefault();
+
+      if (!tokenId) {
+        showCommentStatus("No token selected.", true);
+        return;
+      }
+
+      const commenterName = document.getElementById("commenterName").value.trim();
+      const message = document.getElementById("commentMessage").value.trim();
+
+      if (!commenterName) {
+        showCommentStatus("Please enter your name.", true);
+        return;
+      }
+
+      if (!message) {
+        showCommentStatus("Please enter a comment.", true);
+        return;
+      }
+
+      const submitBtn = document.getElementById("submitCommentBtn");
+      submitBtn.disabled = true;
+
+      try {
+        const res = await fetch("/comments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tokenId: Number(tokenId),
+            commenterName,
+            message
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Failed to submit comment");
+        }
+
+        showCommentStatus("Comment posted successfully.");
+        document.getElementById("commentMessage").value = "";
+        await loadComments();
+      } catch (err) {
+        showCommentStatus(err.message || String(err), true);
+      } finally {
+        submitBtn.disabled = false;
+      }
+    }
 
     async function loadItem() {
       if (!tokenId) {
         document.getElementById("itemName").textContent = "No token selected";
+        console.warn("[item] No tokenId provided in query string");
         return;
       }
 
@@ -69,18 +344,38 @@
           throw new Error(data.error || "Failed to load item");
         }
 
-        document.getElementById("itemName").textContent = data.metadata.bagName || "Untitled Bag";
+        if (!data.metadata) {
+          console.warn("[item] Response has no metadata:", data);
+        } else {
+          console.log("[item] Loaded metadata for token", tokenId, data.metadata);
+        }
+
+        const bagName = data.metadata.bagName || "Untitled Bag";
+        document.getElementById("itemName").textContent = bagName;
         document.getElementById("metaTokenId").textContent = tokenId;
         document.getElementById("metaCondition").textContent = data.metadata.condition || "-";
         document.getElementById("metaMaterial").textContent = data.metadata.material || "-";
+        document.getElementById("metaStartBid").textContent = data.metadata.startBidEth
+          ? `${data.metadata.startBidEth} ETH`
+          : "0 ETH";
+        document.getElementById("metaBidEnds").textContent = data.metadata.bidEndTimeIso
+          ? new Date(data.metadata.bidEndTimeIso).toLocaleString()
+          : "-";
         document.getElementById("metaOwner").textContent = data.owner || "-";
+        renderItemImage(data.metadata.imageURI, bagName);
       } catch (err) {
         document.getElementById("itemName").textContent = "Failed to load item";
         document.getElementById("itemIntro").textContent = err.message || String(err);
+        renderItemImage("", "");
       }
     }
 
+    document.getElementById("bidForm").addEventListener("submit", submitBid);
+    document.getElementById("commentForm").addEventListener("submit", submitComment);
+
     loadItem();
+    loadBids();
+    loadComments();
   </script>
 </body>
 </html>

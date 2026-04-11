@@ -24,13 +24,26 @@ if (!contractAddress) {
     }
 
     // getBagMetadata returns a struct; use tuple return type to decode correctly
-    const ABI = ["function getBagMetadata(uint256) view returns (tuple(string bagName,string condition,string material))"];
+    const ABI = [
+      "function getBagMetadata(uint256) view returns (tuple(string bagName,string condition,string material,string imageURI,uint256 startBidWei,uint256 bidEndTime))"
+    ];
     const contract = new ethers.Contract(contractAddress, ABI, provider);
 
     const meta = await contract.getBagMetadata(tokenId);
-    // meta will be an array-like [bagName, condition, material]
+    // meta will be an array-like [bagName, condition, material, imageURI, startBidWei, bidEndTime]
+    const startBidWei = meta[4];
+    const bidEndTime = meta[5];
     console.log(`Metadata for token ${tokenId}:`);
-    console.log({ bagName: meta[0], condition: meta[1], material: meta[2] });
+    console.log({
+      bagName: meta[0],
+      condition: meta[1],
+      material: meta[2],
+      imageURI: meta[3],
+      startBidWei: startBidWei.toString(),
+      startBidEth: ethers.formatUnits(startBidWei, 18),
+      bidEndTime: bidEndTime.toString(),
+      bidEndTimeIso: new Date(Number(bidEndTime) * 1000).toISOString()
+    });
   } catch (err) {
     console.error(err);
     process.exitCode = 1;
