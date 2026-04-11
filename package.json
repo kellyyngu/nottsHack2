@@ -9,7 +9,9 @@
     "deploy:ignition:localhost": "npx hardhat ignition deploy ./ignition/modules/LuxuryPassportNFT.js --network localhost",
     "deploy:ignition:base-sepolia": "npx hardhat ignition deploy ./ignition/modules/LuxuryPassportNFT.js --network baseSepolia",
     "deploy:node": "node deploy.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "auth:key-address": "node get-auth-key-address.mjs",
+    "auth:sign-challenge": "node sign-auth-challenge.mjs"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.0.7",

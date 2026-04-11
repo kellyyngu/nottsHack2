@@ -13,6 +13,9 @@ contract LuxuryPassportNFT is ERC721 {
         string material;
         string imageURI;
         string dashTxId;
+        string listingType;
+        string listingStartPriceDash;
+        string listingEndTime;
     }
 
     uint256 private _nextTokenId;
@@ -28,6 +31,9 @@ contract LuxuryPassportNFT is ERC721 {
     /// @param material Material of the bag.
     /// @param imageURI Image URI or data URI for displaying the bag image.
     /// @param dashTxId Dash payment transaction ID used for this mint.
+    /// @param listingType Listing mode (fixed, auction, donate).
+    /// @param listingStartPriceDash Initial listing price/start bid in DASH as text.
+    /// @param listingEndTime Listing end time in ISO-8601 format.
     /// @return tokenId The newly minted token ID.
     function safeMint(
         address to,
@@ -36,7 +42,10 @@ contract LuxuryPassportNFT is ERC721 {
         string calldata condition,
         string calldata material,
         string calldata imageURI,
-        string calldata dashTxId
+        string calldata dashTxId,
+        string calldata listingType,
+        string calldata listingStartPriceDash,
+        string calldata listingEndTime
     ) external returns (uint256 tokenId) {
         require(bytes(dashTxId).length > 0, "dashTxId required");
 
@@ -50,7 +59,10 @@ contract LuxuryPassportNFT is ERC721 {
             condition: condition,
             material: material,
             imageURI: imageURI,
-            dashTxId: dashTxId
+            dashTxId: dashTxId,
+            listingType: listingType,
+            listingStartPriceDash: listingStartPriceDash,
+            listingEndTime: listingEndTime
         });
     }
 

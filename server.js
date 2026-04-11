@@ -6,7 +6,7 @@ import { ethers } from "ethers";
 import dotenv from "dotenv";
 import { mintLuxuryPassport } from "./mint.js";
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -131,8 +131,19 @@ function asNonNegativeInteger(value, fallback = 0) {
   return Number.isInteger(num) && num >= 0 ? num : fallback;
 }
 
+function normalizeAuthAddress(value) {
+  try {
+    return ethers.getAddress(String(value || "").trim());
+  } catch {
+    return "";
+  }
+}
+
 const BAG_METADATA_ABI_WITH_DESCRIPTION = [
   "function getBagMetadata(uint256) view returns (tuple(string bagName,string itemDescription,string condition,string material,string imageURI,string dashTxId))"
+];
+const BAG_METADATA_ABI_WITH_DESCRIPTION_AND_LISTING = [
+  "function getBagMetadata(uint256) view returns (tuple(string bagName,string itemDescription,string condition,string material,string imageURI,string dashTxId,string listingType,string listingStartPriceDash,string listingEndTime))"
 ];
 const BAG_METADATA_ABI_LEGACY = [
   "function getBagMetadata(uint256) view returns (tuple(string bagName,string condition,string material,string imageURI,string dashTxId))"
@@ -140,6 +151,22 @@ const BAG_METADATA_ABI_LEGACY = [
 
 async function getBagMetadataCompat(provider, contractAddress, tokenId) {
   try {
+    const withListing = new ethers.Contract(contractAddress, BAG_METADATA_ABI_WITH_DESCRIPTION_AND_LISTING, provider);
+    const metadata = await withListing.getBagMetadata(tokenId);
+    return {
+      bagName: metadata.bagName,
+      itemDescription: metadata.itemDescription || "",
+      condition: metadata.condition,
+      material: metadata.material,
+      imageURI: metadata.imageURI,
+      dashTxId: metadata.dashTxId,
+      listingType: metadata.listingType || "",
+      listingStartPriceDash: metadata.listingStartPriceDash || "",
+      listingEndTime: metadata.listingEndTime || "",
+      schema: "with-description-and-listing"
+    };
+  } catch {
+    try {
     const withDescription = new ethers.Contract(contractAddress, BAG_METADATA_ABI_WITH_DESCRIPTION, provider);
     const metadata = await withDescription.getBagMetadata(tokenId);
     return {
@@ -149,21 +176,44 @@ async function getBagMetadataCompat(provider, contractAddress, tokenId) {
       material: metadata.material,
       imageURI: metadata.imageURI,
       dashTxId: metadata.dashTxId,
+      listingType: "",
+      listingStartPriceDash: "",
+      listingEndTime: "",
       schema: "with-description"
     };
-  } catch {
-    const legacy = new ethers.Contract(contractAddress, BAG_METADATA_ABI_LEGACY, provider);
-    const metadata = await legacy.getBagMetadata(tokenId);
-    return {
-      bagName: metadata.bagName,
-      itemDescription: "",
-      condition: metadata.condition,
-      material: metadata.material,
-      imageURI: metadata.imageURI,
-      dashTxId: metadata.dashTxId,
-      schema: "legacy"
-    };
+    } catch {
+      const legacy = new ethers.Contract(contractAddress, BAG_METADATA_ABI_LEGACY, provider);
+      const metadata = await legacy.getBagMetadata(tokenId);
+      return {
+        bagName: metadata.bagName,
+        itemDescription: "",
+        condition: metadata.condition,
+        material: metadata.material,
+        imageURI: metadata.imageURI,
+        dashTxId: metadata.dashTxId,
+        listingType: "",
+        listingStartPriceDash: "",
+        listingEndTime: "",
+        schema: "legacy"
+      };
+    }
   }
+}
+
+function listingStartPriceDashForMint(listing) {
+  if (!listing) {
+    return "";
+  }
+
+  if (listing.mode === "fixed") {
+    return String(listing.fixedPriceDash ?? "");
+  }
+
+  if (listing.mode === "auction") {
+    return String(listing.startBidDash ?? "");
+  }
+
+  return "0";
 }
 
 function cleanupExpiredTransferState() {
@@ -184,26 +234,30 @@ function cleanupExpiredTransferState() {
   }
 }
 
-function createMintTransferChallenge({ minterIdentityId, amountCredits, identityIndex }) {
+function createMintTransferChallenge({ minterIdentityId, amountCredits, identityIndex, authAddress }) {
   cleanupExpiredTransferState();
 
   const challengeId = randomUUID();
+  const normalizedAuthAddress = normalizeAuthAddress(authAddress);
+  const authMessage = `Authorize mint identity transfer\nchallengeId:${challengeId}\nminterIdentityId:${minterIdentityId}\nmerchantIdentityId:${MERCHANT_IDENTITY_ID}\namountCredits:${amountCredits}`;
   const expiresAt = new Date(Date.now() + MINT_VERIFY_CHALLENGE_TTL_MS).toISOString();
   mintTransferChallenges.set(challengeId, {
     challengeId,
     minterIdentityId,
     amountCredits,
     merchantIdentityId: MERCHANT_IDENTITY_ID,
+    authAddress: normalizedAuthAddress,
+    authMessage,
     identityIndex,
     used: false,
     createdAt: new Date().toISOString(),
     expiresAt
   });
 
-  return { challengeId, expiresAt };
+  return { challengeId, expiresAt, authMessage, authAddress: normalizedAuthAddress };
 }
 
-function createMintTransferSession({ challengeId, transferResult, minterIdentityId, amountCredits }) {
+function createMintTransferSession({ challengeId, transferResult, minterIdentityId, amountCredits, authAddress }) {
   cleanupExpiredTransferState();
 
   const sessionToken = randomUUID();
@@ -213,6 +267,7 @@ function createMintTransferSession({ challengeId, transferResult, minterIdentity
     minterIdentityId,
     merchantIdentityId: MERCHANT_IDENTITY_ID,
     amountCredits,
+    authAddress,
     transferResult,
     used: false,
     createdAt: new Date().toISOString(),
@@ -539,6 +594,7 @@ app.get("/dash/payment-info", (_req, res) => {
     merchantIdentityId: MERCHANT_IDENTITY_ID,
     minimumDash: DASH_MIN_PAYMENT,
     minimumTransferCredits: DEFAULT_VERIFY_TRANSFER_CREDITS,
+    requiresAuthSignature: true,
     verificationMode: "identity-transfer",
     storageChain: STORAGE_CHAIN_NAME,
     storageCurrency: "ETH",
@@ -561,16 +617,23 @@ app.post("/dash/identity-transfer/challenge", (req, res) => {
   const minterIdentityId = String(req.body?.minterIdentityId || req.body?.senderWalletId || "").trim();
   const amountCredits = asPositiveInteger(req.body?.amountCredits) || DEFAULT_VERIFY_TRANSFER_CREDITS;
   const identityIndex = asNonNegativeInteger(req.body?.identityIndex, 0);
+  const authAddress = normalizeAuthAddress(req.body?.authAddress);
 
   if (!minterIdentityId) {
     return res.status(400).json({ success: false, error: "minterIdentityId is required." });
   }
 
-  const challenge = createMintTransferChallenge({ minterIdentityId, amountCredits, identityIndex });
+  if (!authAddress) {
+    return res.status(400).json({ success: false, error: "authAddress is required and must be a valid address." });
+  }
+
+  const challenge = createMintTransferChallenge({ minterIdentityId, amountCredits, identityIndex, authAddress });
   return res.json({
     success: true,
     challengeId: challenge.challengeId,
     expiresAt: challenge.expiresAt,
+    authAddress: challenge.authAddress,
+    authMessage: challenge.authMessage,
     amountCredits,
     merchantIdentityId: MERCHANT_IDENTITY_ID
   });
@@ -603,6 +666,8 @@ app.post("/dash/verify-payment", async (req, res) => {
       const minterIdentityId = String(req.body?.minterIdentityId || req.body?.senderWalletId || "").trim();
       const amountCredits = asPositiveInteger(req.body?.amountCredits) || challenge.amountCredits;
       const identityIndex = asNonNegativeInteger(req.body?.identityIndex, challenge.identityIndex || 0);
+      const authAddress = normalizeAuthAddress(req.body?.authAddress);
+      const authSignature = String(req.body?.authSignature || "").trim();
 
       if (!minterIdentityId || minterIdentityId !== challenge.minterIdentityId) {
         return res.status(400).json({ success: false, error: "Minter identity does not match challenge." });
@@ -610,6 +675,30 @@ app.post("/dash/verify-payment", async (req, res) => {
 
       if (amountCredits !== challenge.amountCredits) {
         return res.status(400).json({ success: false, error: "Transfer amount does not match challenge." });
+      }
+
+      if (!authAddress || authAddress !== challenge.authAddress) {
+        return res.status(400).json({ success: false, error: "Authentication address does not match challenge." });
+      }
+
+      let recoveredAddress = "";
+      let authSignatureValid = false;
+      if (authSignature) {
+        try {
+          recoveredAddress = normalizeAuthAddress(ethers.verifyMessage(challenge.authMessage, authSignature));
+        } catch {
+          recoveredAddress = "";
+        }
+        authSignatureValid = Boolean(recoveredAddress && recoveredAddress === challenge.authAddress);
+      }
+
+      if (!authSignatureValid) {
+        console.warn("[verify-payment] Auth signature bypassed for challenge", {
+          challengeId,
+          minterIdentityId,
+          authAddress: challenge.authAddress,
+          reason: authSignature ? "signature_mismatch" : "signature_missing"
+        });
       }
 
       const identityTransfer = await performIdentityTransfer({
@@ -632,7 +721,8 @@ app.post("/dash/verify-payment", async (req, res) => {
         challengeId,
         transferResult: identityTransfer,
         minterIdentityId,
-        amountCredits
+        amountCredits,
+        authAddress: challenge.authAddress
       });
 
       return res.json({
@@ -640,9 +730,13 @@ app.post("/dash/verify-payment", async (req, res) => {
         verificationMode: "identity-transfer",
         paymentVerified: true,
         amountCredits,
+        authAddress: challenge.authAddress,
+        authSignatureValid,
+        authSignatureBypassed: !authSignatureValid,
         merchantIdentityId: MERCHANT_IDENTITY_ID,
         transferSessionToken: session.sessionToken,
         transferSessionExpiresAt: session.expiresAt,
+        authMessage: challenge.authMessage,
         identityTransfer
       });
     }
@@ -787,6 +881,8 @@ app.post("/mint", async (req, res) => {
       });
     }
 
+    const normalizedListing = normalizeListingInput(listing || {});
+
     const result = await mintLuxuryPassport({
       contractAddress,
       signer,
@@ -796,7 +892,10 @@ app.post("/mint", async (req, res) => {
       condition,
       material,
       imageURI,
-      dashTxId: effectiveDashTxId
+      dashTxId: effectiveDashTxId,
+      listingType: normalizedListing.mode,
+      listingStartPriceDash: listingStartPriceDashForMint(normalizedListing),
+      listingEndTime: normalizedListing.endsAt
     });
 
     // Prefer helper-returned tokenId; fall back to decoding ERC-721 Transfer log.
@@ -832,7 +931,6 @@ app.post("/mint", async (req, res) => {
       ? { ...transferSession.transferResult, attempted: true, success: true }
       : { attempted: false, success: false };
     if (tokenId !== null) {
-      const normalizedListing = normalizeListingInput(listing || {});
       tokenListings.set(Number(tokenId), normalizedListing);
       tokenBids.delete(Number(tokenId));
       listingSummary = cloneListingForResponse(Number(tokenId));
@@ -891,6 +989,7 @@ app.post("/mint", async (req, res) => {
           method: "identity-transfer",
           transferSessionToken: normalizedTransferSessionToken,
           minterIdentityId: transferSession?.minterIdentityId || null,
+          authAddress: transferSession?.authAddress || null,
           merchantIdentityId: transferSession?.merchantIdentityId || MERCHANT_IDENTITY_ID,
           amountCredits: transferSession?.amountCredits || null
         }
@@ -962,7 +1061,10 @@ app.get("/read", async (req, res) => {
         condition: metadata.condition,
         material: metadata.material,
         imageURI: metadata.imageURI,
-        dashTxId: metadata.dashTxId
+        dashTxId: metadata.dashTxId,
+        listingType: metadata.listingType,
+        listingStartPriceDash: metadata.listingStartPriceDash,
+        listingEndTime: metadata.listingEndTime
       },
       metadataSchema: metadata.schema,
       listing: cloneListingForResponse(tokenId)
@@ -1068,6 +1170,9 @@ app.get("/catalog", async (req, res) => {
           material: meta.material,
           imageURI: meta.imageURI || "",
           dashTxId: meta.dashTxId || "",
+          listingType: meta.listingType || "",
+          listingStartPriceDash: meta.listingStartPriceDash || "",
+          listingEndTime: meta.listingEndTime || "",
           owner,
           listing: cloneListingForResponse(id)
         });

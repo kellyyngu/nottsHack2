@@ -3,9 +3,11 @@ import { fileURLToPath } from "url";
 
 // Minimal ABI containing only the safeMint function.
 const LUXURY_PASSPORT_ABI = [
+  "function safeMint(address to, string bagName, string itemDescription, string condition, string material, string imageURI, string dashTxId, string listingType, string listingStartPriceDash, string listingEndTime) external returns (uint256 tokenId)",
   "function safeMint(address to, string bagName, string itemDescription, string condition, string material, string imageURI, string dashTxId) external returns (uint256 tokenId)",
   "function safeMint(address to, string bagName, string condition, string material, string imageURI, string dashTxId) external returns (uint256 tokenId)"
 ];
+const SAFE_MINT_WITH_DESCRIPTION_AND_LISTING = "safeMint(address,string,string,string,string,string,string,string,string,string)";
 const SAFE_MINT_WITH_DESCRIPTION = "safeMint(address,string,string,string,string,string,string)";
 const SAFE_MINT_LEGACY = "safeMint(address,string,string,string,string,string)";
 
@@ -22,6 +24,9 @@ const SAFE_MINT_LEGACY = "safeMint(address,string,string,string,string,string)";
  * @param {string} params.material Bag material
  * @param {string} params.imageURI Bag image URI/data URI
  * @param {string} params.dashTxId Dash payment transaction ID
+ * @param {string} params.listingType Listing type (fixed, auction, donate)
+ * @param {string} params.listingStartPriceDash Listing start price in DASH as text
+ * @param {string} params.listingEndTime Listing end time in ISO format
  * @returns {Promise<{hash: string, receipt: any, tokenId: string | null, metadataSchema: string}>}
  */
 export async function mintLuxuryPassport({
@@ -33,7 +38,10 @@ export async function mintLuxuryPassport({
   condition,
   material,
   imageURI,
-  dashTxId
+  dashTxId,
+  listingType,
+  listingStartPriceDash,
+  listingEndTime
 }) {
   const contract = new ethers.Contract(contractAddress, LUXURY_PASSPORT_ABI, signer);
 
@@ -42,6 +50,34 @@ export async function mintLuxuryPassport({
   let metadataSchema = "legacy";
 
   try {
+    const preview = await contract[SAFE_MINT_WITH_DESCRIPTION_AND_LISTING].staticCall(
+      to,
+      bagName,
+      String(itemDescription || ""),
+      condition,
+      material,
+      imageURI,
+      dashTxId,
+      String(listingType || ""),
+      String(listingStartPriceDash || ""),
+      String(listingEndTime || "")
+    );
+    predictedTokenId = preview != null ? preview.toString() : null;
+    tx = await contract[SAFE_MINT_WITH_DESCRIPTION_AND_LISTING](
+      to,
+      bagName,
+      String(itemDescription || ""),
+      condition,
+      material,
+      imageURI,
+      dashTxId,
+      String(listingType || ""),
+      String(listingStartPriceDash || ""),
+      String(listingEndTime || "")
+    );
+    metadataSchema = "with-description-and-listing";
+  } catch {
+    try {
     const preview = await contract[SAFE_MINT_WITH_DESCRIPTION].staticCall(
       to,
       bagName,
@@ -62,11 +98,12 @@ export async function mintLuxuryPassport({
       dashTxId
     );
     metadataSchema = "with-description";
-  } catch {
-    const preview = await contract[SAFE_MINT_LEGACY].staticCall(to, bagName, condition, material, imageURI, dashTxId);
-    predictedTokenId = preview != null ? preview.toString() : null;
-    tx = await contract[SAFE_MINT_LEGACY](to, bagName, condition, material, imageURI, dashTxId);
-    metadataSchema = "legacy";
+    } catch {
+      const preview = await contract[SAFE_MINT_LEGACY].staticCall(to, bagName, condition, material, imageURI, dashTxId);
+      predictedTokenId = preview != null ? preview.toString() : null;
+      tx = await contract[SAFE_MINT_LEGACY](to, bagName, condition, material, imageURI, dashTxId);
+      metadataSchema = "legacy";
+    }
   }
 
   const receipt = await tx.wait();
@@ -105,7 +142,10 @@ if (__filename === process.argv[1]) {
     condition: "Excellent",
     material: "Lambskin",
     imageURI: "https://example.com/lady-dior.png",
-    dashTxId: "example-dash-payment-txid"
+    dashTxId: "example-dash-payment-txid",
+    listingType: "fixed",
+    listingStartPriceDash: "1.25",
+    listingEndTime: new Date(Date.now() + 86400000).toISOString()
   });
 
   console.log("Mint tx hash:", result.hash);

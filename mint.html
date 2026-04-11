@@ -89,11 +89,21 @@
         <label class="form-label" for="minterIdentityId">MINTER IDENTITY ID</label>
         <input class="form-input" id="minterIdentityId" placeholder="e.g. 7QC9..." />
 
+        <label class="form-label" for="authAddress">AUTH KEY ADDRESS</label>
+        <input class="form-input" id="authAddress" placeholder="0x..." />
+
         <label class="form-label" for="transferCredits">TRANSFER CREDITS</label>
         <input class="form-input" id="transferCredits" type="number" min="1" step="1" placeholder="e.g. 1000000" />
 
         <label class="form-label" for="transferIdentityIndex">IDENTITY INDEX</label>
         <input class="form-input" id="transferIdentityIndex" type="number" min="0" step="1" value="0" />
+
+        <label class="form-label" for="authChallengeMessage">SIGN THIS CHALLENGE MESSAGE</label>
+        <textarea class="form-textarea" id="authChallengeMessage" rows="4" readonly placeholder="Challenge message will appear after requesting verification."></textarea>
+        <button id="copyChallengeBtn" type="button" class="secondary-pill-btn">COPY CHALLENGE</button>
+
+        <label class="form-label" for="authSignature">AUTH KEY SIGNATURE</label>
+        <textarea class="form-textarea" id="authSignature" rows="3" placeholder="Paste signature for the challenge message"></textarea>
 
         <button id="verifyDashBtn" type="button" class="secondary-pill-btn">VERIFY IDENTITY TRANSFER</button>
         <div id="dashPaymentStatus" class="status-box"></div>

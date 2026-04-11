@@ -2,9 +2,10 @@ const statusEl = document.getElementById("status");
 const mintBtn = document.getElementById("mintBtn");
 const viewBtn = document.getElementById("viewBtn");
 const verifyDashBtn = document.getElementById("verifyDashBtn");
+const copyChallengeBtn = document.getElementById("copyChallengeBtn");
 const viewResultEl = document.getElementById("viewResult");
 const dashPaymentStatusEl = document.getElementById("dashPaymentStatus");
-const API_ORIGIN = String(window.API_BASE_URL || "").trim();
+const API_ORIGIN = String(window.API_BASE_URL || "").trim() || `${window.location.protocol}//${window.location.hostname}:3001`;
 
 function apiUrl(path) {
   return `${API_ORIGIN}${path}`;
@@ -23,6 +24,7 @@ let imageApproved = false;
 let currentSource = "upload";
 let paymentVerified = false;
 let verifiedTransferSessionToken = "";
+let pendingTransferChallenge = null;
 let liveAutoVerifyEnabled = false;
 let liveVerifyAttempt = 0;
 let liveVerifyBusy = false;
@@ -125,6 +127,20 @@ function showDashPaymentStatus(message, isError = false) {
 function invalidateTransferVerification() {
   paymentVerified = false;
   verifiedTransferSessionToken = "";
+  pendingTransferChallenge = null;
+}
+
+async function copyAuthChallengeMessage() {
+  const authChallengeMessageEl = document.getElementById("authChallengeMessage");
+  const message = String(authChallengeMessageEl?.value || "").trim();
+
+  if (!message) {
+    showDashPaymentStatus("Create a challenge first before copying it.", true);
+    return;
+  }
+
+  await navigator.clipboard.writeText(message);
+  showDashPaymentStatus("Challenge message copied. Sign it with the auth key address shown in the form.");
 }
 
 async function loadDashPaymentInfo() {
@@ -152,6 +168,9 @@ async function loadDashPaymentInfo() {
 
 async function verifyDashPayment() {
   const minterIdentityId = document.getElementById("minterIdentityId")?.value.trim() || "";
+  const authAddress = document.getElementById("authAddress")?.value.trim() || "";
+  const authSignature = document.getElementById("authSignature")?.value.trim() || "";
+  const authChallengeMessageEl = document.getElementById("authChallengeMessage");
   const transferCreditsRaw = document.getElementById("transferCredits")?.value.trim() || "";
   const transferIdentityIndexRaw = document.getElementById("transferIdentityIndex")?.value.trim() || "0";
   const amountCredits = Number(transferCreditsRaw);
@@ -159,6 +178,11 @@ async function verifyDashPayment() {
 
   if (!minterIdentityId) {
     showDashPaymentStatus("Enter the minter identity ID first.", true);
+    return;
+  }
+
+  if (!authAddress) {
+    showDashPaymentStatus("Enter the auth key address before verification.", true);
     return;
   }
 
@@ -176,20 +200,50 @@ async function verifyDashPayment() {
   showDashPaymentStatus("Creating secure verification challenge...");
 
   try {
-    const challengeRes = await fetch(apiUrl("/dash/identity-transfer/challenge"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const needsNewChallenge =
+      !pendingTransferChallenge ||
+      pendingTransferChallenge.minterIdentityId !== minterIdentityId ||
+      pendingTransferChallenge.amountCredits !== amountCredits ||
+      pendingTransferChallenge.identityIndex !== identityIndex ||
+      pendingTransferChallenge.authAddress.toLowerCase() !== authAddress.toLowerCase() ||
+      Date.parse(pendingTransferChallenge.expiresAt || "") <= Date.now();
+
+    if (needsNewChallenge) {
+      const challengeRes = await fetch(apiUrl("/dash/identity-transfer/challenge"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          minterIdentityId,
+          amountCredits,
+          identityIndex,
+          authAddress,
+          senderWalletId: minterIdentityId
+        })
+      });
+
+      const challengeData = await challengeRes.json();
+      if (!challengeRes.ok || !challengeData.success || !challengeData.challengeId) {
+        throw new Error(challengeData.error || "Unable to create transfer challenge");
+      }
+
+      pendingTransferChallenge = {
+        challengeId: challengeData.challengeId,
+        expiresAt: challengeData.expiresAt,
+        authMessage: challengeData.authMessage || "",
         minterIdentityId,
         amountCredits,
         identityIndex,
-        senderWalletId: minterIdentityId
-      })
-    });
+        authAddress
+      };
 
-    const challengeData = await challengeRes.json();
-    if (!challengeRes.ok || !challengeData.success || !challengeData.challengeId) {
-      throw new Error(challengeData.error || "Unable to create transfer challenge");
+      if (authChallengeMessageEl) {
+        authChallengeMessageEl.value = pendingTransferChallenge.authMessage || "";
+      }
+    }
+
+    if (!authSignature) {
+      showDashPaymentStatus("Sign the challenge message and paste your auth key signature before verifying.", true);
+      return;
     }
 
     showDashPaymentStatus("Verifying identity transfer with merchant...");
@@ -198,10 +252,12 @@ async function verifyDashPayment() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        challengeId: challengeData.challengeId,
+        challengeId: pendingTransferChallenge.challengeId,
         minterIdentityId,
         amountCredits,
         identityIndex,
+        authAddress,
+        authSignature,
         senderWalletId: minterIdentityId
       })
     });
@@ -217,6 +273,10 @@ async function verifyDashPayment() {
 
     paymentVerified = true;
     verifiedTransferSessionToken = data.transferSessionToken;
+    pendingTransferChallenge = null;
+    if (authChallengeMessageEl) {
+      authChallengeMessageEl.value = "";
+    }
     const transferMessage = data?.identityTransfer?.attempted
       ? data.identityTransfer.success
         ? " Identity transfer completed."
@@ -224,7 +284,7 @@ async function verifyDashPayment() {
       : "";
 
     showDashPaymentStatus(
-      `Identity transfer verified for ${amountCredits} credits.${transferMessage}`,
+      `Identity transfer verified for ${amountCredits} credits with auth signature.${transferMessage}`,
       Boolean(data?.identityTransfer?.attempted && !data.identityTransfer.success)
     );
   } catch (err) {
@@ -873,6 +933,9 @@ async function mintNftFlow() {
     document.getElementById("listingEndTime").value = "";
     document.getElementById("sellerWalletId").value = "";
     document.getElementById("minterIdentityId").value = "";
+    document.getElementById("authAddress").value = "";
+    document.getElementById("authSignature").value = "";
+    document.getElementById("authChallengeMessage").value = "";
     document.getElementById("transferCredits").value = "";
     document.getElementById("transferIdentityIndex").value = "0";
     capturedImageData = null;
@@ -953,8 +1016,9 @@ document.addEventListener("DOMContentLoaded", () => {
   mintBtn.addEventListener("click", mintNftFlow);
   viewBtn.addEventListener("click", viewNFT);
   verifyDashBtn.addEventListener("click", verifyDashPayment);
+  copyChallengeBtn?.addEventListener("click", copyAuthChallengeMessage);
 
-  ["minterIdentityId", "transferCredits", "transferIdentityIndex"].forEach((id) => {
+  ["minterIdentityId", "authAddress", "authSignature", "transferCredits", "transferIdentityIndex"].forEach((id) => {
     document.getElementById(id)?.addEventListener("input", () => {
       if (paymentVerified) {
         invalidateTransferVerification();
