@@ -23,6 +23,58 @@ async function parseApiResponse(res) {
   };
 }
 
+function computeReward(transactionCount) {
+  if (transactionCount >= 20) {
+    return {
+      tier: "partnered-shop",
+      discountPercent: 20,
+      label: "Partnered Shop Reward",
+      description: "20% discount and access to partnered shop discounts"
+    };
+  }
+
+  if (transactionCount >= 10) {
+    return {
+      tier: "gold",
+      discountPercent: 20,
+      label: "20% Discount",
+      description: "20% discount unlocked"
+    };
+  }
+
+  if (transactionCount >= 2) {
+    return {
+      tier: "starter",
+      discountPercent: 10,
+      label: "10% Discount",
+      description: "10% discount unlocked"
+    };
+  }
+
+  return {
+    tier: "none",
+    discountPercent: 0,
+    label: "No Reward Yet",
+    description: "Complete more transactions to unlock rewards"
+  };
+}
+
+function buildStatsFromTransactions(walletId, transactions) {
+  const txs = Array.isArray(transactions) ? transactions : [];
+  const transactionCount = txs.length;
+  const listingCount = txs.filter((tx) => tx?.type === "listing_created").length;
+  const bidCount = txs.filter((tx) => tx?.type === "bid_placed").length;
+
+  return {
+    walletId,
+    transactionCount,
+    listingCount,
+    bidCount,
+    reward: computeReward(transactionCount),
+    lastActivityAt: txs.length ? txs[0]?.timestamp || null : null
+  };
+}
+
 function formatReward(stats) {
   if (!stats) {
     return "No reward data.";
@@ -42,14 +94,32 @@ function formatReward(stats) {
 
 async function loadRewardSummary() {
   try {
+    let wallets = [];
+
     const res = await fetch("/wallet-rewards/summary");
     const data = await parseApiResponse(res);
+    if (res.ok && data.success) {
+      wallets = data.wallets || [];
+    } else {
+      const fallbackRes = await fetch("/wallet-activity/summary");
+      const fallbackData = await parseApiResponse(fallbackRes);
+      if (!fallbackRes.ok || !fallbackData.success) {
+        throw new Error(fallbackData.error || data.error || "Failed to load rewards summary.");
+      }
 
-    if (!res.ok || !data.success) {
-      throw new Error(data.error || "Failed to load rewards summary.");
+      wallets = (fallbackData.wallets || []).map((wallet) => {
+        const transactionCount = Number(wallet.transactionCount || 0);
+        return {
+          walletId: wallet.walletId,
+          transactionCount,
+          listingCount: Number(wallet.listingCount || 0),
+          bidCount: Number(wallet.bidCount || 0),
+          reward: wallet.reward || computeReward(transactionCount),
+          lastActivityAt: wallet.lastActivityAt || null
+        };
+      });
     }
 
-    const wallets = data.wallets || [];
     if (!wallets.length) {
       rewardsLeaderboard.textContent = "No wallet activity yet.";
       return;
@@ -77,14 +147,23 @@ async function loadWalletReward() {
   setRewardsStatus("Checking wallet reward...");
 
   try {
+    let stats = null;
+
     const res = await fetch(`/wallet-rewards/${encodeURIComponent(walletId)}`);
     const data = await parseApiResponse(res);
 
-    if (!res.ok || !data.success) {
-      throw new Error(data.error || "Failed to load wallet reward.");
+    if (res.ok && data.success && data.stats) {
+      stats = data.stats;
+    } else {
+      const fallbackRes = await fetch(`/wallet-activity/${encodeURIComponent(walletId)}`);
+      const fallbackData = await parseApiResponse(fallbackRes);
+      if (!fallbackRes.ok || !fallbackData.success) {
+        throw new Error(fallbackData.error || data.error || "Failed to load wallet reward.");
+      }
+      stats = fallbackData.stats || buildStatsFromTransactions(walletId, fallbackData.transactions || []);
     }
 
-    walletRewardDetails.textContent = formatReward(data.stats);
+    walletRewardDetails.textContent = formatReward(stats);
     setRewardsStatus(`Reward loaded for ${walletId}.`);
   } catch (err) {
     walletRewardDetails.textContent = "";
