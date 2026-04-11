@@ -8,6 +8,7 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 contract LuxuryPassportNFT is ERC721 {
     struct BagMetadata {
         string bagName;
+        string itemDescription;
         string condition;
         string material;
         string imageURI;
@@ -22,6 +23,7 @@ contract LuxuryPassportNFT is ERC721 {
     /// @notice Safely mints a new NFT and stores its bag metadata.
     /// @param to Recipient address.
     /// @param bagName Name of the bag.
+    /// @param itemDescription Description of the bag.
     /// @param condition Condition of the bag.
     /// @param material Material of the bag.
     /// @param imageURI Image URI or data URI for displaying the bag image.
@@ -30,6 +32,7 @@ contract LuxuryPassportNFT is ERC721 {
     function safeMint(
         address to,
         string calldata bagName,
+        string calldata itemDescription,
         string calldata condition,
         string calldata material,
         string calldata imageURI,
@@ -43,6 +46,7 @@ contract LuxuryPassportNFT is ERC721 {
         _safeMint(to, tokenId);
         _bagMetadata[tokenId] = BagMetadata({
             bagName: bagName,
+            itemDescription: itemDescription,
             condition: condition,
             material: material,
             imageURI: imageURI,

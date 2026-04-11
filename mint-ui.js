@@ -4,6 +4,11 @@ const viewBtn = document.getElementById("viewBtn");
 const verifyDashBtn = document.getElementById("verifyDashBtn");
 const viewResultEl = document.getElementById("viewResult");
 const dashPaymentStatusEl = document.getElementById("dashPaymentStatus");
+const API_ORIGIN = String(window.API_BASE_URL || "").trim();
+
+function apiUrl(path) {
+  return `${API_ORIGIN}${path}`;
+}
 
 function showStatus(message, isError = false) {
   statusEl.textContent = message;
@@ -17,7 +22,7 @@ let capturedImageData = null;
 let imageApproved = false;
 let currentSource = "upload";
 let paymentVerified = false;
-let verifiedDashTxId = "";
+let verifiedTransferSessionToken = "";
 let liveAutoVerifyEnabled = false;
 let liveVerifyAttempt = 0;
 let liveVerifyBusy = false;
@@ -117,9 +122,14 @@ function showDashPaymentStatus(message, isError = false) {
   dashPaymentStatusEl.style.display = "block";
 }
 
+function invalidateTransferVerification() {
+  paymentVerified = false;
+  verifiedTransferSessionToken = "";
+}
+
 async function loadDashPaymentInfo() {
   try {
-    const res = await fetch("/dash/payment-info");
+    const res = await fetch(apiUrl("/dash/payment-info"));
     const data = await res.json();
 
     if (!res.ok || !data.success) {
@@ -127,9 +137,13 @@ async function loadDashPaymentInfo() {
     }
 
     const dashAddressInput = document.getElementById("dashAddress");
-    dashAddressInput.value = data.merchantAddress || "";
+    dashAddressInput.value = data.merchantIdentityId || data.merchantAddress || "";
+    const transferCreditsInput = document.getElementById("transferCredits");
+    if (transferCreditsInput && !transferCreditsInput.value) {
+      transferCreditsInput.value = String(data.minimumTransferCredits || "");
+    }
     showDashPaymentStatus(
-      `Pay at least ${data.minimumDash} DASH, verify your TXID to mint your item as an NFT.`
+      `Transfer at least ${data.minimumTransferCredits} Platform credits to merchant identity, then verify before minting.`
     );
   } catch (err) {
     showDashPaymentStatus(err.message || String(err), true);
@@ -137,46 +151,84 @@ async function loadDashPaymentInfo() {
 }
 
 async function verifyDashPayment() {
-  const dashTxId = document.getElementById("dashTxId").value.trim();
+  const minterIdentityId = document.getElementById("minterIdentityId")?.value.trim() || "";
+  const transferCreditsRaw = document.getElementById("transferCredits")?.value.trim() || "";
+  const transferIdentityIndexRaw = document.getElementById("transferIdentityIndex")?.value.trim() || "0";
+  const amountCredits = Number(transferCreditsRaw);
+  const identityIndex = Number(transferIdentityIndexRaw);
 
-  if (!dashTxId) {
-    showDashPaymentStatus("Enter a Dash transaction ID first.", true);
+  if (!minterIdentityId) {
+    showDashPaymentStatus("Enter the minter identity ID first.", true);
+    return;
+  }
+
+  if (!Number.isInteger(amountCredits) || amountCredits <= 0) {
+    showDashPaymentStatus("Transfer credits must be a positive integer.", true);
+    return;
+  }
+
+  if (!Number.isInteger(identityIndex) || identityIndex < 0) {
+    showDashPaymentStatus("Identity index must be a non-negative integer.", true);
     return;
   }
 
   verifyDashBtn.disabled = true;
-  showDashPaymentStatus("Verifying Dash payment...");
+  showDashPaymentStatus("Creating secure verification challenge...");
 
   try {
-    const res = await fetch("/dash/verify-payment", {
+    const challengeRes = await fetch(apiUrl("/dash/identity-transfer/challenge"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ txid: dashTxId })
+      body: JSON.stringify({
+        minterIdentityId,
+        amountCredits,
+        identityIndex,
+        senderWalletId: minterIdentityId
+      })
+    });
+
+    const challengeData = await challengeRes.json();
+    if (!challengeRes.ok || !challengeData.success || !challengeData.challengeId) {
+      throw new Error(challengeData.error || "Unable to create transfer challenge");
+    }
+
+    showDashPaymentStatus("Verifying identity transfer with merchant...");
+
+    const res = await fetch(apiUrl("/dash/verify-payment"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        challengeId: challengeData.challengeId,
+        minterIdentityId,
+        amountCredits,
+        identityIndex,
+        senderWalletId: minterIdentityId
+      })
     });
 
     const data = await res.json();
     if (!res.ok || !data.success) {
-      throw new Error(data.error || "Dash payment verification failed");
+      throw new Error(data.error || "Identity transfer verification failed");
     }
 
-    if (!data.meetsMinimum) {
-      paymentVerified = false;
-      verifiedDashTxId = "";
-      showDashPaymentStatus(
-        `Payment too low. Received ${data.receivedDash} DASH but minimum is required.`,
-        true
-      );
-      return;
+    if (!data.transferSessionToken) {
+      throw new Error("Verification succeeded but no transfer session token was returned.");
     }
 
     paymentVerified = true;
-    verifiedDashTxId = dashTxId;
+    verifiedTransferSessionToken = data.transferSessionToken;
+    const transferMessage = data?.identityTransfer?.attempted
+      ? data.identityTransfer.success
+        ? " Identity transfer completed."
+        : ` Identity transfer failed: ${data.identityTransfer.error || "unknown error"}.`
+      : "";
+
     showDashPaymentStatus(
-      `Dash payment verified: ${data.receivedDash} DASH (${data.confirmations} confirmations).`
+      `Identity transfer verified for ${amountCredits} credits.${transferMessage}`,
+      Boolean(data?.identityTransfer?.attempted && !data.identityTransfer.success)
     );
   } catch (err) {
-    paymentVerified = false;
-    verifiedDashTxId = "";
+    invalidateTransferVerification();
     showDashPaymentStatus(err.message || String(err), true);
   } finally {
     verifyDashBtn.disabled = false;
@@ -680,7 +732,7 @@ async function mintNftFlow() {
   const startBidDash = document.getElementById("startBidDash").value.trim();
   const listingEndTime = document.getElementById("listingEndTime").value;
   const sellerWalletId = document.getElementById("sellerWalletId").value.trim();
-  const dashTxId = document.getElementById("dashTxId").value.trim();
+  const transferSessionToken = verifiedTransferSessionToken;
 
   if (!bagName || !selectedCondition || !selectedMaterial) {
     showStatus("Please fill all fields.", true);
@@ -734,13 +786,8 @@ async function mintNftFlow() {
     return;
   }
 
-  if (!dashTxId) {
-    showStatus("Please enter your Dash payment TXID before minting.", true);
-    return;
-  }
-
-  if (!paymentVerified || dashTxId !== verifiedDashTxId) {
-    showStatus("Please verify your Dash payment TXID before minting.", true);
+  if (!paymentVerified || !transferSessionToken) {
+    showStatus("Please verify the identity transfer before minting.", true);
     return;
   }
 
@@ -748,7 +795,7 @@ async function mintNftFlow() {
   showStatus("Uploading image...");
 
   try {
-    const uploadRes = await fetch("/upload-image", {
+    const uploadRes = await fetch(apiUrl("/upload-image"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ imageData: capturedImageData })
@@ -773,7 +820,7 @@ async function mintNftFlow() {
       listing.startBidDash = Number(startBidDash);
     }
 
-    const res = await fetch("/mint", {
+    const res = await fetch(apiUrl("/mint"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -782,8 +829,10 @@ async function mintNftFlow() {
         condition,
         material,
         imageURI: uploadData.imageURI,
-        dashTxId,
-        listing
+        transferSessionToken,
+        listing,
+        recipientId: sellerWalletId,
+        senderWalletId: sellerWalletId
       })
     });
 
@@ -804,7 +853,15 @@ async function mintNftFlow() {
       ? ` | sponsored storage fee: ~${storageFee} ETH on ${storageChain}`
       : ` | storage written on ${storageChain} (ETH sponsored by backend)`;
 
-    showStatus(`Success! Minted. Tx hash: ${data.txHash}${mintedTokenPart}${sponsoredStoragePart}`);
+    const transferMessage = data?.identityTransfer?.attempted
+      ? data.identityTransfer.success
+        ? " | identity transfer completed"
+        : ` | identity transfer failed: ${data.identityTransfer.error || "unknown error"}`
+      : "";
+
+    showStatus(`Success! Minted. Tx hash: ${data.txHash}${mintedTokenPart}${sponsoredStoragePart}${transferMessage}`,
+      Boolean(data?.identityTransfer?.attempted && !data.identityTransfer.success)
+    );
 
     document.getElementById("bagName").value = "";
     document.getElementById("itemDescription").value = "";
@@ -815,11 +872,12 @@ async function mintNftFlow() {
     document.getElementById("startBidDash").value = "";
     document.getElementById("listingEndTime").value = "";
     document.getElementById("sellerWalletId").value = "";
-    document.getElementById("dashTxId").value = "";
+    document.getElementById("minterIdentityId").value = "";
+    document.getElementById("transferCredits").value = "";
+    document.getElementById("transferIdentityIndex").value = "0";
     capturedImageData = null;
     imageApproved = false;
-    paymentVerified = false;
-    verifiedDashTxId = "";
+    invalidateTransferVerification();
     document.getElementById("capturedImage").style.display = "none";
     document.getElementById("approveBtn").style.display = "none";
     document.getElementById("approveBtn").textContent = "Approve Image";
@@ -865,7 +923,7 @@ async function viewNFT() {
   viewResultEl.textContent = "Loading...";
 
   try {
-    const res = await fetch(`/read?tokenId=${encodeURIComponent(tokenId)}`);
+    const res = await fetch(apiUrl(`/read?tokenId=${encodeURIComponent(tokenId)}`));
     const data = await res.json();
 
     if (res.status === 404) {
@@ -895,6 +953,15 @@ document.addEventListener("DOMContentLoaded", () => {
   mintBtn.addEventListener("click", mintNftFlow);
   viewBtn.addEventListener("click", viewNFT);
   verifyDashBtn.addEventListener("click", verifyDashPayment);
+
+  ["minterIdentityId", "transferCredits", "transferIdentityIndex"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("input", () => {
+      if (paymentVerified) {
+        invalidateTransferVerification();
+        showDashPaymentStatus("Identity details changed. Verify transfer again before minting.", true);
+      }
+    });
+  });
 
   initSearchableDropdown("condition", "conditionOptions", ALLOWED_CONDITIONS);
   initSearchableDropdown("material", "materialOptions", ALLOWED_MATERIALS);

@@ -3,8 +3,11 @@ import { fileURLToPath } from "url";
 
 // Minimal ABI containing only the safeMint function.
 const LUXURY_PASSPORT_ABI = [
+  "function safeMint(address to, string bagName, string itemDescription, string condition, string material, string imageURI, string dashTxId) external returns (uint256 tokenId)",
   "function safeMint(address to, string bagName, string condition, string material, string imageURI, string dashTxId) external returns (uint256 tokenId)"
 ];
+const SAFE_MINT_WITH_DESCRIPTION = "safeMint(address,string,string,string,string,string,string)";
+const SAFE_MINT_LEGACY = "safeMint(address,string,string,string,string,string)";
 
 /**
  * Calls safeMint on LuxuryPassportNFT and waits for confirmation.
@@ -14,17 +17,19 @@ const LUXURY_PASSPORT_ABI = [
  * @param {ethers.Signer} params.signer Ethers signer
  * @param {string} params.to Recipient wallet address
  * @param {string} params.bagName Bag name
+ * @param {string} params.itemDescription Bag description
  * @param {string} params.condition Bag condition
  * @param {string} params.material Bag material
  * @param {string} params.imageURI Bag image URI/data URI
  * @param {string} params.dashTxId Dash payment transaction ID
- * @returns {Promise<{hash: string, receipt: any}>}
+ * @returns {Promise<{hash: string, receipt: any, tokenId: string | null, metadataSchema: string}>}
  */
 export async function mintLuxuryPassport({
   contractAddress,
   signer,
   to,
   bagName,
+  itemDescription,
   condition,
   material,
   imageURI,
@@ -32,12 +37,45 @@ export async function mintLuxuryPassport({
 }) {
   const contract = new ethers.Contract(contractAddress, LUXURY_PASSPORT_ABI, signer);
 
-  const tx = await contract.safeMint(to, bagName, condition, material, imageURI, dashTxId);
+  let predictedTokenId = null;
+  let tx;
+  let metadataSchema = "legacy";
+
+  try {
+    const preview = await contract[SAFE_MINT_WITH_DESCRIPTION].staticCall(
+      to,
+      bagName,
+      String(itemDescription || ""),
+      condition,
+      material,
+      imageURI,
+      dashTxId
+    );
+    predictedTokenId = preview != null ? preview.toString() : null;
+    tx = await contract[SAFE_MINT_WITH_DESCRIPTION](
+      to,
+      bagName,
+      String(itemDescription || ""),
+      condition,
+      material,
+      imageURI,
+      dashTxId
+    );
+    metadataSchema = "with-description";
+  } catch {
+    const preview = await contract[SAFE_MINT_LEGACY].staticCall(to, bagName, condition, material, imageURI, dashTxId);
+    predictedTokenId = preview != null ? preview.toString() : null;
+    tx = await contract[SAFE_MINT_LEGACY](to, bagName, condition, material, imageURI, dashTxId);
+    metadataSchema = "legacy";
+  }
+
   const receipt = await tx.wait();
 
   return {
     hash: tx.hash,
-    receipt
+    receipt,
+    tokenId: predictedTokenId,
+    metadataSchema
   };
 }
 
@@ -63,6 +101,7 @@ if (__filename === process.argv[1]) {
     signer,
     to: await signer.getAddress(),
     bagName: "Lady Dior",
+    itemDescription: "A classic lambskin shoulder bag.",
     condition: "Excellent",
     material: "Lambskin",
     imageURI: "https://example.com/lady-dior.png",

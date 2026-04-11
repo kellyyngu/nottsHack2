@@ -56,7 +56,7 @@
         <div class="item-meta-list">
           <div class="item-meta-row"><strong>Mode</strong><span id="listingModeText">-</span></div>
           <div class="item-meta-row"><strong>Price / Start Bid</strong><span id="listingPriceText">-</span></div>
-          <div class="item-meta-row"><strong>Highest Bid</strong><span id="highestBidText">-</span></div>
+          <div class="item-meta-row" id="highestBidRow"><strong>Highest Bid</strong><span id="highestBidText">-</span></div>
           <div class="item-meta-row"><strong>Listing Ends</strong><span id="listingEndText">-</span></div>
         </div>
 
@@ -69,6 +69,20 @@
 
           <button id="placeBidBtn" type="button" class="secondary-pill-btn">PLACE BID</button>
           <div id="bidStatus" class="status-box"></div>
+        </div>
+
+        <div id="buyPanel" style="display: none; margin-top: 14px;">
+          <label class="form-label" for="buyWalletId">BUYER WALLET ID</label>
+          <input class="form-input" id="buyWalletId" placeholder="Your wallet ID" />
+
+          <label class="form-label" for="buyDashTxId">DASH PAYMENT TXID</label>
+          <input class="form-input" id="buyDashTxId" placeholder="64-char transaction ID" />
+
+          <label class="form-label" for="buyIdentityIndex">IDENTITY INDEX</label>
+          <input class="form-input" id="buyIdentityIndex" type="number" min="0" step="1" value="0" />
+
+          <button id="buyItemBtn" type="button" class="secondary-pill-btn">BUY ITEM</button>
+          <div id="buyStatus" class="status-box"></div>
         </div>
 
         <div class="item-actions">

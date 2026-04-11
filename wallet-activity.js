@@ -3,11 +3,27 @@ const walletSearchBtn = document.getElementById("walletSearchBtn");
 const walletSearchStatus = document.getElementById("walletSearchStatus");
 const walletSummaryEl = document.getElementById("walletSummary");
 const walletTransactionsEl = document.getElementById("walletTransactions");
+const transferSenderWalletIdEl = document.getElementById("transferSenderWalletId");
+const transferRecipientIdEl = document.getElementById("transferRecipientId");
+const transferAmountCreditsEl = document.getElementById("transferAmountCredits");
+const transferIdentityIndexEl = document.getElementById("transferIdentityIndex");
+const transferIdentityBtn = document.getElementById("transferIdentityBtn");
+const transferStatusEl = document.getElementById("transferStatus");
 
 function setStatus(message, isError = false) {
   walletSearchStatus.textContent = message;
   walletSearchStatus.className = isError ? "status-box err" : "status-box ok";
   walletSearchStatus.style.display = "block";
+}
+
+function setTransferStatus(message, isError = false) {
+  if (!transferStatusEl) {
+    return;
+  }
+
+  transferStatusEl.textContent = message;
+  transferStatusEl.className = isError ? "status-box err" : "status-box ok";
+  transferStatusEl.style.display = "block";
 }
 
 async function parseApiResponse(res) {
@@ -100,6 +116,68 @@ async function loadWalletTransactions() {
   }
 }
 
+async function sendIdentityTransfer() {
+  if (!transferIdentityBtn) {
+    return;
+  }
+
+  const recipientId = String(transferRecipientIdEl?.value || "").trim();
+  const amountCredits = Number(transferAmountCreditsEl?.value || "");
+  const identityIndex = Number(transferIdentityIndexEl?.value || 0);
+  const senderWalletId = String(transferSenderWalletIdEl?.value || "").trim();
+
+  if (!recipientId) {
+    setTransferStatus("Recipient identity ID is required.", true);
+    return;
+  }
+
+  if (!Number.isInteger(amountCredits) || amountCredits <= 0) {
+    setTransferStatus("Amount must be a positive integer number of credits.", true);
+    return;
+  }
+
+  if (!Number.isInteger(identityIndex) || identityIndex < 0) {
+    setTransferStatus("Identity index must be 0 or greater.", true);
+    return;
+  }
+
+  transferIdentityBtn.disabled = true;
+  setTransferStatus("Submitting identity transfer...");
+
+  try {
+    const res = await fetch("/dash/identity-transfer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipientId,
+        amountCredits,
+        identityIndex,
+        senderWalletId
+      })
+    });
+
+    const data = await parseApiResponse(res);
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || "Identity transfer failed.");
+    }
+
+    const sender = data.senderIdentityId || "-";
+    const resultId = data.resultId || "submitted";
+    setTransferStatus(
+      `Transfer sent: ${amountCredits} credits from ${sender} to ${recipientId}. Result: ${resultId}`
+    );
+
+    loadSummary();
+    if (walletSearchInput && walletSearchInput.value.trim()) {
+      loadWalletTransactions();
+    }
+  } catch (err) {
+    setTransferStatus(err.message || String(err), true);
+  } finally {
+    transferIdentityBtn.disabled = false;
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   walletSearchBtn.addEventListener("click", loadWalletTransactions);
   walletSearchInput.addEventListener("keydown", (event) => {
@@ -109,4 +187,8 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   loadSummary();
+
+  if (transferIdentityBtn) {
+    transferIdentityBtn.addEventListener("click", sendIdentityTransfer);
+  }
 });

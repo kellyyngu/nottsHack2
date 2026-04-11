@@ -13,7 +13,28 @@ const accounts = deployerPk ? [deployerPk] : [];
 export default defineConfig({
   plugins: [hardhatEthers, hardhatIgnition, hardhatIgnitionEthers],
   solidity: {
-    version: "0.8.20"
+    profiles: {
+      default: {
+        version: "0.8.20",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200
+          },
+          viaIR: true
+        }
+      },
+      production: {
+        version: "0.8.20",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200
+          },
+          viaIR: true
+        }
+      }
+    }
   },
   networks: {
     localhost: {

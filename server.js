@@ -19,12 +19,49 @@ const ENFORCE_STORAGE_CHAIN = String(process.env.ENFORCE_STORAGE_CHAIN || "false
 const DASH_EXPLORER_BASE_URL =
   process.env.DASH_EXPLORER_BASE_URL ||
   (DASH_NETWORK === "mainnet" ? "https://api.blockchair.com/dash" : "https://api.blockchair.com/dash/testnet");
+const ENABLE_IDENTITY_TRANSFER_ON_VERIFY = String(process.env.ENABLE_IDENTITY_TRANSFER_ON_VERIFY || "true").toLowerCase() === "true";
+const ENABLE_IDENTITY_TRANSFER_ON_MINT = String(process.env.ENABLE_IDENTITY_TRANSFER_ON_MINT || "true").toLowerCase() === "true";
+const ENABLE_IDENTITY_TRANSFER_ON_BUY = String(process.env.ENABLE_IDENTITY_TRANSFER_ON_BUY || "true").toLowerCase() === "true";
+const IDENTITY_TRANSFER_STRICT = String(process.env.IDENTITY_TRANSFER_STRICT || "false").toLowerCase() === "true";
+const DEFAULT_VERIFY_TRANSFER_CREDITS = Number(process.env.IDENTITY_TRANSFER_VERIFY_CREDITS || "1000000");
+const DEFAULT_MINT_TRANSFER_CREDITS = Number(process.env.IDENTITY_TRANSFER_MINT_CREDITS || "1000000");
+const DEFAULT_BUY_TRANSFER_CREDITS = Number(process.env.IDENTITY_TRANSFER_BUY_CREDITS || "1000000");
+const MERCHANT_IDENTITY_ID = String(process.env.MERCHANT_IDENTITY_ID || process.env.RECIPIENT_IDENTITY_ID || "").trim();
+const MINT_VERIFY_CHALLENGE_TTL_MS = Number(process.env.MINT_VERIFY_CHALLENGE_TTL_MS || "300000");
+const MINT_TRANSFER_SESSION_TTL_MS = Number(process.env.MINT_TRANSFER_SESSION_TTL_MS || "900000");
+const CATALOG_FROM_BLOCK = asNonNegativeInteger(process.env.CATALOG_FROM_BLOCK, 0);
 const LISTING_MODES = new Set(["fixed", "auction", "donate"]);
 const tokenListings = new Map();
 const tokenBids = new Map();
 const walletActivity = new Map();
+const mintTransferChallenges = new Map();
+const mintTransferSessions = new Map();
+const ALLOWED_ORIGINS = new Set([
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:3001",
+  "http://127.0.0.1:3001"
+]);
 
 app.use(express.json({ limit: "10mb" }));
+
+app.use((req, res, next) => {
+  const origin = String(req.headers.origin || "").trim();
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
+
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+
+  next();
+});
+
 app.use(express.static("."));
 
 // Return JSON on body parse errors (invalid JSON) instead of HTML error page
@@ -51,9 +88,13 @@ app.use((err, req, res, next) => {
 });
 
 function getConfig(requirePrivateKey = true) {
-  const rpcUrl = process.env.RPC_URL || "http://127.0.0.1:8545";
+  const rpcUrl = String(process.env.RPC_URL || "").trim();
   const contractAddress = process.env.CONTRACT_ADDRESS;
   const privateKey = process.env.PRIVATE_KEY;
+
+  if (!rpcUrl) {
+    throw new Error("Set RPC_URL environment variable (example: https://sepolia.base.org).");
+  }
 
   if (!contractAddress) {
     throw new Error("Set CONTRACT_ADDRESS environment variable.");
@@ -78,6 +119,107 @@ function asTokenId(value) {
 function asPositiveNumber(value) {
   const num = Number(value);
   return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function asPositiveInteger(value) {
+  const num = Number(value);
+  return Number.isInteger(num) && num > 0 ? num : null;
+}
+
+function asNonNegativeInteger(value, fallback = 0) {
+  const num = Number(value);
+  return Number.isInteger(num) && num >= 0 ? num : fallback;
+}
+
+const BAG_METADATA_ABI_WITH_DESCRIPTION = [
+  "function getBagMetadata(uint256) view returns (tuple(string bagName,string itemDescription,string condition,string material,string imageURI,string dashTxId))"
+];
+const BAG_METADATA_ABI_LEGACY = [
+  "function getBagMetadata(uint256) view returns (tuple(string bagName,string condition,string material,string imageURI,string dashTxId))"
+];
+
+async function getBagMetadataCompat(provider, contractAddress, tokenId) {
+  try {
+    const withDescription = new ethers.Contract(contractAddress, BAG_METADATA_ABI_WITH_DESCRIPTION, provider);
+    const metadata = await withDescription.getBagMetadata(tokenId);
+    return {
+      bagName: metadata.bagName,
+      itemDescription: metadata.itemDescription || "",
+      condition: metadata.condition,
+      material: metadata.material,
+      imageURI: metadata.imageURI,
+      dashTxId: metadata.dashTxId,
+      schema: "with-description"
+    };
+  } catch {
+    const legacy = new ethers.Contract(contractAddress, BAG_METADATA_ABI_LEGACY, provider);
+    const metadata = await legacy.getBagMetadata(tokenId);
+    return {
+      bagName: metadata.bagName,
+      itemDescription: "",
+      condition: metadata.condition,
+      material: metadata.material,
+      imageURI: metadata.imageURI,
+      dashTxId: metadata.dashTxId,
+      schema: "legacy"
+    };
+  }
+}
+
+function cleanupExpiredTransferState() {
+  const now = Date.now();
+
+  for (const [challengeId, challenge] of mintTransferChallenges.entries()) {
+    const expiresAt = Date.parse(challenge?.expiresAt || "");
+    if (!Number.isFinite(expiresAt) || expiresAt <= now || challenge?.used) {
+      mintTransferChallenges.delete(challengeId);
+    }
+  }
+
+  for (const [sessionToken, session] of mintTransferSessions.entries()) {
+    const expiresAt = Date.parse(session?.expiresAt || "");
+    if (!Number.isFinite(expiresAt) || expiresAt <= now || session?.used) {
+      mintTransferSessions.delete(sessionToken);
+    }
+  }
+}
+
+function createMintTransferChallenge({ minterIdentityId, amountCredits, identityIndex }) {
+  cleanupExpiredTransferState();
+
+  const challengeId = randomUUID();
+  const expiresAt = new Date(Date.now() + MINT_VERIFY_CHALLENGE_TTL_MS).toISOString();
+  mintTransferChallenges.set(challengeId, {
+    challengeId,
+    minterIdentityId,
+    amountCredits,
+    merchantIdentityId: MERCHANT_IDENTITY_ID,
+    identityIndex,
+    used: false,
+    createdAt: new Date().toISOString(),
+    expiresAt
+  });
+
+  return { challengeId, expiresAt };
+}
+
+function createMintTransferSession({ challengeId, transferResult, minterIdentityId, amountCredits }) {
+  cleanupExpiredTransferState();
+
+  const sessionToken = randomUUID();
+  const expiresAt = new Date(Date.now() + MINT_TRANSFER_SESSION_TTL_MS).toISOString();
+  mintTransferSessions.set(sessionToken, {
+    challengeId,
+    minterIdentityId,
+    merchantIdentityId: MERCHANT_IDENTITY_ID,
+    amountCredits,
+    transferResult,
+    used: false,
+    createdAt: new Date().toISOString(),
+    expiresAt
+  });
+
+  return { sessionToken, expiresAt };
 }
 
 function recordWalletActivity(walletId, entry) {
@@ -296,20 +438,108 @@ async function getDashPaymentSummary(txid) {
   };
 }
 
+async function performIdentityTransfer({
+  recipientId,
+  amountCredits,
+  identityIndex = 0,
+  senderWalletId = "",
+  metadata = {}
+}) {
+  const normalizedRecipientId = String(recipientId || "").trim();
+  const normalizedAmount = asPositiveInteger(amountCredits);
+  const normalizedIdentityIndex = asNonNegativeInteger(identityIndex, 0);
+
+  if (!normalizedRecipientId || !normalizedAmount) {
+    return {
+      attempted: false,
+      success: false,
+      error: "recipientId and positive amountCredits are required for identity transfer."
+    };
+  }
+
+  let sdk;
+  try {
+    const { setupDashClient } = await import("./setupDashClient.mjs");
+    const setup = await setupDashClient({ identityIndex: normalizedIdentityIndex });
+    sdk = setup?.sdk;
+    const keyManager = setup?.keyManager;
+
+    if (!sdk || !keyManager) {
+      throw new Error("Dash identity signer is not configured. Set PLATFORM_MNEMONIC in environment.");
+    }
+
+    const { identity, signer } = await keyManager.getTransfer();
+    const result = await sdk.identities.creditTransfer({
+      identity,
+      recipientId: normalizedRecipientId,
+      amount: BigInt(normalizedAmount),
+      signer,
+    });
+
+    const senderIdentityId = identity?.id?.toString ? identity.id.toString() : String(identity?.id || "");
+    const resultId = result?.id?.toString?.() || result?.proof?.coreChainLockedHeight || "submitted";
+
+    if (senderWalletId) {
+      recordWalletActivity(senderWalletId, {
+        type: "identity_transfer_sent",
+        recipientId: normalizedRecipientId,
+        senderIdentityId,
+        amountCredits: normalizedAmount,
+        resultId: String(resultId),
+        ...metadata
+      });
+    }
+
+    recordWalletActivity(normalizedRecipientId, {
+      type: "identity_transfer_received",
+      senderIdentityId,
+      amountCredits: normalizedAmount,
+      resultId: String(resultId),
+      ...metadata
+    });
+
+    return {
+      attempted: true,
+      success: true,
+      senderIdentityId,
+      recipientId: normalizedRecipientId,
+      amountCredits: normalizedAmount,
+      resultId: String(resultId)
+    };
+  } catch (err) {
+    return {
+      attempted: true,
+      success: false,
+      error: err.message || String(err)
+    };
+  } finally {
+    try {
+      if (sdk?.disconnect) {
+        await sdk.disconnect();
+      }
+    } catch {
+      // ignore cleanup failures
+    }
+  }
+}
+
 app.get("/dash/payment-info", (_req, res) => {
-  if (!DASH_MERCHANT_ADDRESS) {
+  if (!DASH_MERCHANT_ADDRESS && !MERCHANT_IDENTITY_ID) {
     return res.status(500).json({
       success: false,
-      error: "Set DASH_MERCHANT_ADDRESS in environment before accepting payments."
+      error: "Set DASH_MERCHANT_ADDRESS or MERCHANT_IDENTITY_ID in environment before accepting payments."
     });
   }
 
   return res.json({
     success: true,
-    paymentModel: "dash-user-payments + developer-sponsored-sepolia-storage",
+    paymentModel: "identity-transfer-to-merchant + developer-sponsored-sepolia-storage",
     network: DASH_NETWORK,
     merchantAddress: DASH_MERCHANT_ADDRESS,
+    merchantIdentityId: MERCHANT_IDENTITY_ID,
     minimumDash: DASH_MIN_PAYMENT,
+    minimumTransferCredits: DEFAULT_VERIFY_TRANSFER_CREDITS,
+    verificationMode: "identity-transfer",
     storageChain: STORAGE_CHAIN_NAME,
     storageCurrency: "ETH",
     nftStorage: "NFT metadata is written on Sepolia",
@@ -320,8 +550,103 @@ app.get("/dash/payment-info", (_req, res) => {
   });
 });
 
+app.post("/dash/identity-transfer/challenge", (req, res) => {
+  if (!MERCHANT_IDENTITY_ID) {
+    return res.status(500).json({
+      success: false,
+      error: "Set MERCHANT_IDENTITY_ID (or RECIPIENT_IDENTITY_ID) before identity transfer verification."
+    });
+  }
+
+  const minterIdentityId = String(req.body?.minterIdentityId || req.body?.senderWalletId || "").trim();
+  const amountCredits = asPositiveInteger(req.body?.amountCredits) || DEFAULT_VERIFY_TRANSFER_CREDITS;
+  const identityIndex = asNonNegativeInteger(req.body?.identityIndex, 0);
+
+  if (!minterIdentityId) {
+    return res.status(400).json({ success: false, error: "minterIdentityId is required." });
+  }
+
+  const challenge = createMintTransferChallenge({ minterIdentityId, amountCredits, identityIndex });
+  return res.json({
+    success: true,
+    challengeId: challenge.challengeId,
+    expiresAt: challenge.expiresAt,
+    amountCredits,
+    merchantIdentityId: MERCHANT_IDENTITY_ID
+  });
+});
+
 app.post("/dash/verify-payment", async (req, res) => {
   try {
+    cleanupExpiredTransferState();
+
+    const challengeId = String(req.body?.challengeId || "").trim();
+    if (challengeId) {
+      if (!MERCHANT_IDENTITY_ID) {
+        return res.status(500).json({
+          success: false,
+          error: "Set MERCHANT_IDENTITY_ID (or RECIPIENT_IDENTITY_ID) before identity transfer verification."
+        });
+      }
+
+      const challenge = mintTransferChallenges.get(challengeId);
+      if (!challenge || challenge.used) {
+        return res.status(400).json({ success: false, error: "Transfer challenge is invalid or already used." });
+      }
+
+      const expiresAtMs = Date.parse(challenge.expiresAt);
+      if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+        mintTransferChallenges.delete(challengeId);
+        return res.status(400).json({ success: false, error: "Transfer challenge expired. Request a new challenge." });
+      }
+
+      const minterIdentityId = String(req.body?.minterIdentityId || req.body?.senderWalletId || "").trim();
+      const amountCredits = asPositiveInteger(req.body?.amountCredits) || challenge.amountCredits;
+      const identityIndex = asNonNegativeInteger(req.body?.identityIndex, challenge.identityIndex || 0);
+
+      if (!minterIdentityId || minterIdentityId !== challenge.minterIdentityId) {
+        return res.status(400).json({ success: false, error: "Minter identity does not match challenge." });
+      }
+
+      if (amountCredits !== challenge.amountCredits) {
+        return res.status(400).json({ success: false, error: "Transfer amount does not match challenge." });
+      }
+
+      const identityTransfer = await performIdentityTransfer({
+        recipientId: MERCHANT_IDENTITY_ID,
+        amountCredits,
+        identityIndex,
+        senderWalletId: minterIdentityId,
+        metadata: { typeContext: "mint_payment_verification", challengeId }
+      });
+
+      if (!identityTransfer.success) {
+        return res.status(502).json({ success: false, error: identityTransfer.error || "Identity transfer verification failed." });
+      }
+
+      challenge.used = true;
+      challenge.usedAt = new Date().toISOString();
+      mintTransferChallenges.set(challengeId, challenge);
+
+      const session = createMintTransferSession({
+        challengeId,
+        transferResult: identityTransfer,
+        minterIdentityId,
+        amountCredits
+      });
+
+      return res.json({
+        success: true,
+        verificationMode: "identity-transfer",
+        paymentVerified: true,
+        amountCredits,
+        merchantIdentityId: MERCHANT_IDENTITY_ID,
+        transferSessionToken: session.sessionToken,
+        transferSessionExpiresAt: session.expiresAt,
+        identityTransfer
+      });
+    }
+
     if (!DASH_MERCHANT_ADDRESS) {
       return res.status(500).json({
         success: false,
@@ -335,7 +660,32 @@ app.post("/dash/verify-payment", async (req, res) => {
     }
 
     const summary = await getDashPaymentSummary(txid);
-    return res.json({ success: true, ...summary });
+
+    let identityTransfer = { attempted: false, success: false };
+    if (summary.meetsMinimum && ENABLE_IDENTITY_TRANSFER_ON_VERIFY) {
+      const transferRecipientId = String(
+        req.body?.recipientId || req.body?.identityRecipientId || req.body?.walletId || ""
+      ).trim();
+      const transferCredits = asPositiveInteger(req.body?.amountCredits) || DEFAULT_VERIFY_TRANSFER_CREDITS;
+      const transferIdentityIndex = asNonNegativeInteger(req.body?.identityIndex, 0);
+      const senderWalletId = String(req.body?.senderWalletId || "").trim();
+
+      if (transferRecipientId) {
+        identityTransfer = await performIdentityTransfer({
+          recipientId: transferRecipientId,
+          amountCredits: transferCredits,
+          identityIndex: transferIdentityIndex,
+          senderWalletId,
+          metadata: { typeContext: "payment_verification", txid }
+        });
+
+        if (IDENTITY_TRANSFER_STRICT && identityTransfer.attempted && !identityTransfer.success) {
+          throw new Error(identityTransfer.error || "Identity transfer failed during payment verification.");
+        }
+      }
+    }
+
+    return res.json({ success: true, ...summary, identityTransfer });
   } catch (err) {
     return res.status(502).json({ success: false, error: err.message || String(err) });
   }
@@ -376,26 +726,51 @@ app.post("/upload-image", async (req, res) => {
 
 app.post("/mint", async (req, res) => {
   try {
-    const { bagName, condition, material, imageURI, dashTxId, listing } = req.body;
+    cleanupExpiredTransferState();
 
-    if (!bagName || !condition || !material || !imageURI || !dashTxId) {
-      return res.status(400).json({ error: "bagName, condition, material, imageURI and dashTxId are required." });
+    const { bagName, itemDescription, condition, material, imageURI, dashTxId, listing, transferSessionToken } = req.body;
+    const normalizedItemDescription = String(itemDescription || "").trim();
+    const normalizedTransferSessionToken = String(transferSessionToken || "").trim();
+    const hasTransferSession = Boolean(normalizedTransferSessionToken);
+
+    if (!bagName || !condition || !material || !imageURI) {
+      return res.status(400).json({ error: "bagName, condition, material and imageURI are required." });
     }
 
-    if (!DASH_MERCHANT_ADDRESS) {
+    if (!hasTransferSession && !DASH_MERCHANT_ADDRESS) {
       return res.status(500).json({ success: false, error: "Set DASH_MERCHANT_ADDRESS before minting with payments." });
     }
 
-    if (!isValidDashTxid(dashTxId)) {
-      return res.status(400).json({ success: false, error: "Invalid Dash txid format." });
-    }
+    let payment = null;
+    let transferSession = null;
+    let effectiveDashTxId = String(dashTxId || "").trim();
 
-    const payment = await getDashPaymentSummary(dashTxId);
-    if (!payment.meetsMinimum) {
-      return res.status(400).json({
-        success: false,
-        error: `Dash payment below minimum. Received ${payment.receivedDash} DASH, require at least ${DASH_MIN_PAYMENT} DASH.`
-      });
+    if (hasTransferSession) {
+      transferSession = mintTransferSessions.get(normalizedTransferSessionToken);
+      if (!transferSession || transferSession.used) {
+        return res.status(400).json({ success: false, error: "Transfer session is invalid, used, or expired." });
+      }
+
+      const expiresAtMs = Date.parse(transferSession.expiresAt);
+      if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+        mintTransferSessions.delete(normalizedTransferSessionToken);
+        return res.status(400).json({ success: false, error: "Transfer session expired. Verify transfer again." });
+      }
+
+      const proofId = transferSession.transferResult?.resultId || normalizedTransferSessionToken;
+      effectiveDashTxId = `identity-transfer:${String(proofId)}`;
+    } else {
+      if (!isValidDashTxid(effectiveDashTxId)) {
+        return res.status(400).json({ success: false, error: "Invalid Dash txid format." });
+      }
+
+      payment = await getDashPaymentSummary(effectiveDashTxId);
+      if (!payment.meetsMinimum) {
+        return res.status(400).json({
+          success: false,
+          error: `Dash payment below minimum. Received ${payment.receivedDash} DASH, require at least ${DASH_MIN_PAYMENT} DASH.`
+        });
+      }
     }
 
     const { rpcUrl, contractAddress, privateKey } = getConfig(true);
@@ -417,27 +792,30 @@ app.post("/mint", async (req, res) => {
       signer,
       to: signerAddress,
       bagName,
+      itemDescription: normalizedItemDescription,
       condition,
       material,
       imageURI,
-      dashTxId
+      dashTxId: effectiveDashTxId
     });
 
-    // Decode ERC-721 Transfer log to return minted tokenId in API response.
-    let tokenId = null;
+    // Prefer helper-returned tokenId; fall back to decoding ERC-721 Transfer log.
+    let tokenId = result?.tokenId != null ? String(result.tokenId) : null;
     try {
-      const iface = new ethers.Interface([
-        "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
-      ]);
-      for (const log of result.receipt?.logs || []) {
-        try {
-          const parsed = iface.parseLog(log);
-          if (parsed && parsed.name === "Transfer") {
-            tokenId = parsed.args.tokenId.toString();
-            break;
+      if (tokenId === null) {
+        const iface = new ethers.Interface([
+          "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
+        ]);
+        for (const log of result.receipt?.logs || []) {
+          try {
+            const parsed = iface.parseLog(log);
+            if (parsed && parsed.name === "Transfer") {
+              tokenId = parsed.args.tokenId.toString();
+              break;
+            }
+          } catch {
+            // Ignore logs from other contracts/events.
           }
-        } catch {
-          // Ignore logs from other contracts/events.
         }
       }
     } catch {
@@ -450,11 +828,36 @@ app.post("/mint", async (req, res) => {
     const ethStorageFee = ethStorageFeeWei ? ethers.formatEther(ethStorageFeeWei) : null;
 
     let listingSummary = null;
+    let identityTransfer = transferSession?.transferResult
+      ? { ...transferSession.transferResult, attempted: true, success: true }
+      : { attempted: false, success: false };
     if (tokenId !== null) {
       const normalizedListing = normalizeListingInput(listing || {});
       tokenListings.set(Number(tokenId), normalizedListing);
       tokenBids.delete(Number(tokenId));
       listingSummary = cloneListingForResponse(Number(tokenId));
+
+      if (!hasTransferSession && ENABLE_IDENTITY_TRANSFER_ON_MINT) {
+        const transferRecipientId = String(
+          req.body?.recipientId || req.body?.identityRecipientId || normalizedListing.sellerWalletId || ""
+        ).trim();
+        const transferCredits = asPositiveInteger(req.body?.amountCredits) || DEFAULT_MINT_TRANSFER_CREDITS;
+        const transferIdentityIndex = asNonNegativeInteger(req.body?.identityIndex, 0);
+
+        if (transferRecipientId) {
+          identityTransfer = await performIdentityTransfer({
+            recipientId: transferRecipientId,
+            amountCredits: transferCredits,
+            identityIndex: transferIdentityIndex,
+            senderWalletId: normalizedListing.sellerWalletId,
+            metadata: { typeContext: "mint_passport", tokenId: Number(tokenId), dashTxId: effectiveDashTxId }
+          });
+
+          if (IDENTITY_TRANSFER_STRICT && identityTransfer.attempted && !identityTransfer.success) {
+            throw new Error(identityTransfer.error || "Identity transfer failed during mint.");
+          }
+        }
+      }
 
       if (normalizedListing.sellerWalletId) {
         recordWalletActivity(normalizedListing.sellerWalletId, {
@@ -465,18 +868,38 @@ app.post("/mint", async (req, res) => {
           fixedPriceDash: normalizedListing.fixedPriceDash || null,
           startBidDash: normalizedListing.startBidDash || null,
           endsAt: normalizedListing.endsAt,
-          dashTxId
+          dashTxId: effectiveDashTxId
         });
       }
+    }
+
+    if (hasTransferSession && transferSession) {
+      transferSession.used = true;
+      transferSession.usedAt = new Date().toISOString();
+      mintTransferSessions.set(normalizedTransferSessionToken, transferSession);
     }
 
     return res.json({
       success: true,
       paymentModel: "dash-user-payments + developer-sponsored-sepolia-storage",
       txHash: result.hash,
-      dashTxId,
+      dashTxId: effectiveDashTxId,
       tokenId,
       blockNumber: result.receipt?.blockNumber ?? null,
+      paymentVerification: hasTransferSession
+        ? {
+          method: "identity-transfer",
+          transferSessionToken: normalizedTransferSessionToken,
+          minterIdentityId: transferSession?.minterIdentityId || null,
+          merchantIdentityId: transferSession?.merchantIdentityId || MERCHANT_IDENTITY_ID,
+          amountCredits: transferSession?.amountCredits || null
+        }
+        : {
+          method: "dash-txid",
+          txid: effectiveDashTxId,
+          receivedDash: payment?.receivedDash ?? null,
+          confirmations: payment?.confirmations ?? null
+        },
       nftStorage: {
         chain: STORAGE_CHAIN_NAME,
         chainId,
@@ -486,7 +909,9 @@ app.post("/mint", async (req, res) => {
         storageFeePayer: signerAddress,
         estimatedStorageFeeEth: ethStorageFee
       },
-      listing: listingSummary
+      listing: listingSummary,
+      metadataSchema: result.metadataSchema || "legacy",
+      identityTransfer
     });
   } catch (err) {
     return res.status(500).json({
@@ -512,10 +937,7 @@ app.get("/read", async (req, res) => {
 
     const { rpcUrl, contractAddress } = getConfig(false);
     const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const ABI = [
-      "function ownerOf(uint256 tokenId) view returns (address)",
-      "function getBagMetadata(uint256) view returns (tuple(string bagName,string condition,string material,string imageURI,string dashTxId))"
-    ];
+    const ABI = ["function ownerOf(uint256 tokenId) view returns (address)"];
 
     const contract = new ethers.Contract(contractAddress, ABI, provider);
     let owner;
@@ -528,7 +950,7 @@ app.get("/read", async (req, res) => {
       });
     }
 
-    const metadata = await contract.getBagMetadata(tokenId);
+    const metadata = await getBagMetadataCompat(provider, contractAddress, tokenId);
 
     return res.json({
       success: true,
@@ -536,11 +958,13 @@ app.get("/read", async (req, res) => {
       owner,
       metadata: {
         bagName: metadata.bagName,
+        itemDescription: metadata.itemDescription,
         condition: metadata.condition,
         material: metadata.material,
         imageURI: metadata.imageURI,
         dashTxId: metadata.dashTxId
       },
+      metadataSchema: metadata.schema,
       listing: cloneListingForResponse(tokenId)
     });
   } catch (err) {
@@ -555,6 +979,25 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
+app.get("/runtime-config", async (_req, res) => {
+  try {
+    const { rpcUrl, contractAddress } = getConfig(false);
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const network = await provider.getNetwork();
+    return res.json({
+      success: true,
+      rpcUrl,
+      contractAddress,
+      chainId: Number(network.chainId),
+      chainName: network.name,
+      expectedChainId: STORAGE_CHAIN_ID,
+      enforceStorageChain: ENFORCE_STORAGE_CHAIN
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || String(err) });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
@@ -566,16 +1009,30 @@ app.get("/catalog", async (req, res) => {
 
     const ABI = [
       "function ownerOf(uint256 tokenId) view returns (address)",
-      "function getBagMetadata(uint256) view returns (tuple(string bagName,string condition,string material,string imageURI,string dashTxId))",
       "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
     ];
 
     const contract = new ethers.Contract(contractAddress, ABI, provider);
     const iface = new ethers.Interface(["event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"]);
 
-    // Fetch Transfer logs and consider mints (from === zero address)
+    // Fetch Transfer logs in chunks to handle RPC providers that cap block ranges per eth_getLogs call.
     const transferTopic = ethers.id("Transfer(address,address,uint256)");
-    const logs = await provider.getLogs({ address: contractAddress, fromBlock: 0, toBlock: "latest", topics: [transferTopic] });
+    const latestBlock = await provider.getBlockNumber();
+    const maxRange = 9999;
+    const startBlock = Math.min(CATALOG_FROM_BLOCK || latestBlock, latestBlock);
+    const logs = [];
+    for (let fromBlock = startBlock; fromBlock <= latestBlock; fromBlock += maxRange + 1) {
+      const toBlock = Math.min(fromBlock + maxRange, latestBlock);
+      const chunk = await provider.getLogs({
+        address: contractAddress,
+        fromBlock,
+        toBlock,
+        topics: [transferTopic]
+      });
+      if (chunk.length) {
+        logs.push(...chunk);
+      }
+    }
 
     const mintedTokenIds = [];
     for (const log of logs) {
@@ -602,10 +1059,11 @@ app.get("/catalog", async (req, res) => {
       try {
         clearExpiredListingIfNeeded(id);
         const owner = await contract.ownerOf(id);
-        const meta = await contract.getBagMetadata(id);
+        const meta = await getBagMetadataCompat(provider, contractAddress, id);
         items.push({
           tokenId: id,
           bagName: meta.bagName,
+          itemDescription: meta.itemDescription,
           condition: meta.condition,
           material: meta.material,
           imageURI: meta.imageURI || "",
@@ -618,7 +1076,16 @@ app.get("/catalog", async (req, res) => {
       }
     }
 
-    return res.json({ items });
+    return res.json({
+      items,
+      debug: {
+        contractAddress,
+        latestBlock,
+        startBlock,
+        transferLogCount: logs.length,
+        mintedTokenCount: unique.length
+      }
+    });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message || String(err) });
   }
@@ -694,6 +1161,186 @@ app.post("/listing/:tokenId/bid", (req, res) => {
     bid,
     listing: cloneListingForResponse(tokenId)
   });
+});
+
+app.post("/listing/:tokenId/buy", async (req, res) => {
+  const tokenId = asTokenId(req.params.tokenId);
+  if (tokenId === null) {
+    return res.status(400).json({ success: false, error: "Invalid tokenId." });
+  }
+
+  clearExpiredListingIfNeeded(tokenId);
+  const listing = tokenListings.get(tokenId);
+  if (!listing || (listing.mode !== "fixed" && listing.mode !== "donate")) {
+    return res.status(400).json({ success: false, error: "This item is not available for direct purchase." });
+  }
+
+  const buyerWalletId = String(req.body?.buyerWalletId || req.body?.walletId || "").trim();
+  const dashTxId = String(req.body?.dashTxId || "").trim();
+  if (!buyerWalletId) {
+    return res.status(400).json({ success: false, error: "buyerWalletId is required." });
+  }
+  if (!isValidDashTxid(dashTxId)) {
+    return res.status(400).json({ success: false, error: "Valid dashTxId is required." });
+  }
+
+  try {
+    const payment = await getDashPaymentSummary(dashTxId);
+    if (!payment.meetsMinimum) {
+      return res.status(400).json({
+        success: false,
+        error: `Dash payment below minimum. Received ${payment.receivedDash} DASH, require at least ${DASH_MIN_PAYMENT} DASH.`
+      });
+    }
+
+    if (listing.mode === "fixed") {
+      const requiredDash = Number(listing.fixedPriceDash || 0);
+      if (requiredDash > 0 && payment.receivedDash < requiredDash) {
+        return res.status(400).json({
+          success: false,
+          error: `Payment too low for this item. Received ${payment.receivedDash} DASH, requires ${requiredDash} DASH.`
+        });
+      }
+    }
+
+    let identityTransfer = { attempted: false, success: false };
+    if (ENABLE_IDENTITY_TRANSFER_ON_BUY) {
+      const transferRecipientId = String(listing.sellerWalletId || req.body?.recipientId || req.body?.identityRecipientId || "").trim();
+      const transferCredits = asPositiveInteger(req.body?.amountCredits) || DEFAULT_BUY_TRANSFER_CREDITS;
+      const transferIdentityIndex = asNonNegativeInteger(req.body?.identityIndex, 0);
+
+      if (!transferRecipientId) {
+        return res.status(400).json({
+          success: false,
+          error: "Listing sellerWalletId (recipient identity) is required for identity transfer during purchase."
+        });
+      }
+
+      identityTransfer = await performIdentityTransfer({
+        recipientId: transferRecipientId,
+        amountCredits: transferCredits,
+        identityIndex: transferIdentityIndex,
+        senderWalletId: buyerWalletId,
+        metadata: { typeContext: "marketplace_buy", tokenId, dashTxId }
+      });
+
+      if (IDENTITY_TRANSFER_STRICT && identityTransfer.attempted && !identityTransfer.success) {
+        throw new Error(identityTransfer.error || "Identity transfer failed during purchase.");
+      }
+    }
+
+    recordWalletActivity(buyerWalletId, {
+      type: "item_purchased",
+      tokenId,
+      listingMode: listing.mode,
+      amountDash: Number(payment.receivedDash),
+      sellerWalletId: listing.sellerWalletId || null,
+      dashTxId,
+      identityTransferSuccess: identityTransfer.success
+    });
+
+    if (listing.sellerWalletId) {
+      recordWalletActivity(listing.sellerWalletId, {
+        type: "item_sold",
+        tokenId,
+        listingMode: listing.mode,
+        amountDash: Number(payment.receivedDash),
+        buyerWalletId,
+        dashTxId,
+        identityTransferSuccess: identityTransfer.success
+      });
+    }
+
+    tokenListings.delete(tokenId);
+    tokenBids.delete(tokenId);
+
+    return res.json({
+      success: true,
+      tokenId,
+      payment,
+      identityTransfer,
+      message: "Purchase completed and listing closed."
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || String(err) });
+  }
+});
+
+app.post("/dash/identity-transfer", async (req, res) => {
+  const recipientId = String(req.body?.recipientId || "").trim();
+  const amountCredits = asPositiveInteger(req.body?.amountCredits);
+  const identityIndexRaw = req.body?.identityIndex;
+  const senderWalletId = String(req.body?.senderWalletId || "").trim();
+  const identityIndex = Number.isInteger(Number(identityIndexRaw)) && Number(identityIndexRaw) >= 0
+    ? Number(identityIndexRaw)
+    : 0;
+
+  if (!recipientId) {
+    return res.status(400).json({ success: false, error: "recipientId is required." });
+  }
+
+  if (!amountCredits) {
+    return res.status(400).json({ success: false, error: "amountCredits must be a positive integer." });
+  }
+
+  let sdk;
+  try {
+    const { setupDashClient } = await import("./setupDashClient.mjs");
+    const setup = await setupDashClient({ identityIndex });
+    sdk = setup?.sdk;
+    const keyManager = setup?.keyManager;
+
+    if (!sdk || !keyManager) {
+      throw new Error("Dash identity signer is not configured. Set PLATFORM_MNEMONIC in environment.");
+    }
+
+    const { identity, signer } = await keyManager.getTransfer();
+    const amount = BigInt(amountCredits);
+    const result = await sdk.identities.creditTransfer({
+      identity,
+      recipientId,
+      amount,
+      signer,
+    });
+
+    const senderIdentityId = identity?.id?.toString ? identity.id.toString() : String(identity?.id || "");
+    const txLikeId = result?.id?.toString?.() || result?.proof?.coreChainLockedHeight || "submitted";
+
+    if (senderWalletId) {
+      recordWalletActivity(senderWalletId, {
+        type: "identity_transfer_sent",
+        recipientId,
+        senderIdentityId,
+        amountCredits,
+        resultId: String(txLikeId)
+      });
+    }
+
+    recordWalletActivity(recipientId, {
+      type: "identity_transfer_received",
+      senderIdentityId,
+      amountCredits,
+      resultId: String(txLikeId)
+    });
+
+    return res.json({
+      success: true,
+      senderIdentityId,
+      recipientId,
+      amountCredits,
+      resultId: String(txLikeId)
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || String(err) });
+  } finally {
+    try {
+      if (sdk?.disconnect) {
+        await sdk.disconnect();
+      }
+    } catch {
+      // ignore cleanup failures
+    }
+  }
 });
 
 app.get("/wallet-activity/summary", (_req, res) => {

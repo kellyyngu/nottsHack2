@@ -40,6 +40,25 @@
       <div class="mint-divider"></div>
       <h2 style="margin-top: 0;">Transactions</h2>
       <div id="walletTransactions" class="view-result-box show"></div>
+
+      <div class="mint-divider"></div>
+      <h2 style="margin-top: 0;">Identity Transfer</h2>
+      <p class="form-note">Transfer Dash Platform credits from your configured sender identity to another identity ID.</p>
+
+      <label class="form-label" for="transferSenderWalletId">SENDER WALLET ID (for activity log)</label>
+      <input id="transferSenderWalletId" class="form-input" placeholder="Optional wallet ID label" />
+
+      <label class="form-label" for="transferRecipientId">RECIPIENT IDENTITY ID</label>
+      <input id="transferRecipientId" class="form-input" placeholder="e.g. 7QC9..." />
+
+      <label class="form-label" for="transferAmountCredits">AMOUNT (CREDITS)</label>
+      <input id="transferAmountCredits" class="form-input" type="number" min="1" step="1" placeholder="e.g. 1000000" />
+
+      <label class="form-label" for="transferIdentityIndex">IDENTITY INDEX</label>
+      <input id="transferIdentityIndex" class="form-input" type="number" min="0" step="1" value="0" />
+
+      <button id="transferIdentityBtn" type="button" class="secondary-pill-btn">SEND IDENTITY TRANSFER</button>
+      <div id="transferStatus" class="status-box"></div>
     </section>
   </main>
 
