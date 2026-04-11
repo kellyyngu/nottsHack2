@@ -99,6 +99,12 @@ main {
   text-underline-offset: 4px;
 }
 
+.mint-frame {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 10px 10px 10px;
+}
+
 /* ===== Shared layout ===== */
 
 .page-frame {
@@ -419,14 +425,22 @@ main {
 
 .mint-layout {
   display: grid;
-  grid-template-columns: 1.15fr 0.85fr;
-  gap: 18px;
+  grid-template-columns: 1.2fr 0.85fr;
+  gap: 24px;
   align-items: start;
 }
 
 .mint-panel,
 .preview-panel {
   padding: 28px;
+}
+
+.mint-main-panel,
+.mint-side-panel {
+  padding: 28px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.35);
+  border: 1px solid rgba(15,16,32,0.08);
 }
 
 .mint-panel h2,
@@ -436,6 +450,33 @@ main {
   font-weight: 400;
 }
 
+
+.panel-group {
+  margin-bottom: 26px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid rgba(15,16,32,0.08);
+}
+
+.panel-group:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.panel-heading {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  margin-bottom: 14px;
+  color: #6a655b;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@media (max-width: 900px) {
+  .mint-layout {
+    grid-template-columns: 1fr;
+  }
+}
 .form-label {
   display: block;
   margin: 14px 0 7px;
@@ -801,8 +842,35 @@ datalist option {
   text-decoration: none;
   color: #111;
   font-weight: 700;
+  position: relative;
+  transition: all 0.2s ease;
 }
 
+.campaign-nav a:hover {
+  color: #000;
+  font-weight: 700;
+}
+.campaign-nav a.active {
+  font-weight: 750;
+}
+
+.campaign-nav a::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 0%;
+  height: 2px;
+  background: #111;
+  transition: width 0.25s ease;
+}
+.campaign-nav a:hover::after {
+  width: 100%;
+}
+
+.campaign-nav a.active::after {
+  width: 100%;
+}
 .campaign-hero {
   width:100vw;
   margin-left: calc(-50vw+50%);
@@ -840,6 +908,10 @@ datalist option {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.campaign-hero-center a:hover{
+  text-decoration: underline;
 }
 
 .campaign-inline-links {
@@ -948,8 +1020,9 @@ datalist option {
 }
 
 .campaign-footer {
-  background: #7d7b6e;
-  color: #f5f3ef;
+  background: #d9d6c7;
+  bottom:0;
+  color: #060702;
   padding: 26px 20px 12px;
   position: relative;
 }
@@ -968,7 +1041,7 @@ datalist option {
 .campaign-footer-madeby {
   text-align: center;
   font-family: Arial, Helvetica, sans-serif;
-  font-size: 0.78rem;
+  font-size: 1rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   margin-bottom: 8px;
@@ -981,7 +1054,7 @@ datalist option {
   font-size: clamp(5rem, 22vw, 16rem);
   line-height: 0.9;
   letter-spacing: -0.06em;
-  color: #f3f1ee;
+  color: #060702;
 }
 
 /* ===== Responsive ===== */
@@ -1514,4 +1587,354 @@ datalist option {
   width: auto !important;
   margin-top: 0 !important;
   padding: 8px 14px !important;
+}
+
+/* ===== PREMIUM UI UPGRADE ===== */
+
+body {
+  background: linear-gradient(180deg, #e7e4d8, #d9d6c7);
+}
+
+/* cards */
+.gallery-card {
+  transition: all 0.25s ease;
+  cursor: pointer;
+}
+
+.gallery-card:hover {
+  transform: translateY(-6px);
+  opacity: 0.95;
+}
+
+/* buttons */
+button,
+.hero-btn,
+.primary-pill-btn,
+.secondary-pill-btn {
+  transition: all 0.2s ease;
+}
+
+button:hover,
+.hero-btn:hover {
+  transform: translateY(-2px);
+}
+
+/* inputs */
+input, select {
+  transition: all 0.2s ease;
+}
+
+input:focus, select:focus {
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.2);
+}
+
+/* badges */
+.item-tags span {
+  background: rgba(255,255,255,0.9);
+  font-weight: 600;
+}
+
+/* loading skeleton */
+.skeleton {
+  background: linear-gradient(90deg, #ddd, #eee, #ddd);
+  animation: shimmer 1.2s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
+}
+
+/* status polish (KEEP your #status logic) */
+#status {
+  font-weight: 600;
+}
+
+/* NAV BASE */
+.site-nav a {
+  text-decoration: none;
+  color: #111;
+  font-weight: 500;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+/* HOVER EFFECT */
+.site-nav a:hover {
+  color: #000;
+  font-weight: 700;
+}
+
+/* ACTIVE PAGE (bold) */
+.site-nav a.active {
+  font-weight: 800;
+}
+
+/* OPTIONAL: underline animation (VERY NICE) */
+.site-nav a::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 0%;
+  height: 2px;
+  background: #111;
+  transition: width 0.25s ease;
+}
+
+/* hover underline */
+.site-nav a:hover::after {
+  width: 100%;
+}
+
+/* active underline stays */
+.site-nav a.active::after {
+  width: 100%;
+}
+
+/* =========================
+   MINT PAGE LAYOUT
+   ========================= */
+
+.mint-wireframe-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 24px;
+  align-items: stretch;
+  margin-top: 24px;
+}
+
+.mint-left-column {
+  display: grid;
+  grid-template-rows: minmax(420px, 1fr) auto;
+  gap: 18px;
+}
+
+.upload-card,
+.token-card,
+.mint-main-card {
+  height: 100%;
+}
+
+/* Keep your previous card feel */
+.upload-card,
+.token-card,
+.mint-main-card {
+  padding: 24px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(20, 20, 20, 0.08);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(8px);
+}
+
+.upload-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  min-height: 430px;
+}
+
+.token-card {
+  min-height: 150px;
+}
+
+.mint-main-card {
+  min-height: 600px;
+}
+
+/* =========================
+   RIGHT PANEL SPLIT
+   ========================= */
+
+.mint-main-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 0.92fr);
+  gap: 24px;
+  align-items: start;
+  height: 100%;
+}
+
+.mint-main-left,
+.mint-main-right {
+  min-width: 0;
+}
+
+.mint-vertical-divider {
+  width: 1px;
+  min-height: 100%;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(20, 20, 20, 0.18),
+    transparent
+  );
+}
+
+/* =========================
+   TYPOGRAPHY
+   ========================= */
+
+.upload-card h2,
+.token-card h2,
+.mint-main-left h2,
+.mint-main-right h2 {
+  margin: 0 0 18px;
+  font-size: 1.7rem;
+  line-height: 1;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  text-transform: lowercase;
+}
+
+.token-card h2 {
+  margin-bottom: 14px;
+}
+
+/* =========================
+   FORM SPACING
+   ========================= */
+
+.mint-main-left .form-label,
+.mint-main-right .form-label,
+.token-card .form-label {
+  display: block;
+  margin-top: 14px;
+}
+
+.mint-main-left .form-input,
+.mint-main-left .form-textarea,
+.mint-main-left select,
+.mint-main-right .form-input,
+.token-card .form-input {
+  width: 100%;
+}
+
+.double-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+/* Better spacing for buttons inside cards */
+.mint-main-right .secondary-pill-btn,
+.mint-main-right .primary-pill-btn,
+.token-card .secondary-pill-btn {
+  margin-top: 14px;
+}
+
+/* =========================
+   IMAGE AREA
+   ========================= */
+
+.camera-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+}
+
+.camera-topbar {
+  min-height: 24px;
+}
+
+.source-toggle {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.source-toggle button {
+  border-radius: 999px;
+}
+
+#capturedImage,
+#videoStream,
+.image-preview {
+  width: 100%;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+#capturedImage,
+#videoStream {
+  background: rgba(0, 0, 0, 0.04);
+  min-height: 220px;
+  object-fit: cover;
+}
+
+#canvas {
+  display: none;
+}
+
+.camera-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.camera-status,
+.status-box,
+.view-result-box {
+  margin-top: 10px;
+}
+
+/* =========================
+   TOKEN CARD
+   ========================= */
+
+.token-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.token-card .view-result-box {
+  margin-top: 14px;
+}
+
+/* =========================
+   SELECT DROPDOWNS
+   ========================= */
+
+.searchable-select {
+  position: relative;
+}
+
+.searchable-options {
+  max-height: 220px;
+  overflow-y: auto;
+  border-radius: 16px;
+}
+
+/* =========================
+   RESPONSIVE
+   ========================= */
+
+@media (max-width: 1100px) {
+  .mint-wireframe-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .mint-left-column {
+    grid-template-rows: auto auto;
+  }
+
+  .mint-main-card {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 820px) {
+  .mint-main-split {
+    grid-template-columns: 1fr;
+  }
+
+  .mint-vertical-divider {
+    display: none;
+  }
+
+  .double-field-row {
+    grid-template-columns: 1fr;
+  }
 }

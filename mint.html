@@ -9,7 +9,7 @@
 </head>
 <body class="mint-body">
     <header class="campaign-topbar">
-    <div class="campaign-mini-brand" a href="index.html">#BAG</div>
+    <a class="campaign-mini-brand" href="index.html">#BAG</div>
 
     <nav class="campaign-nav">
       <a href="index.html">HOME</a>
@@ -25,13 +25,13 @@
     </nav>
 
   </header>
-  <main class="page-frame">
+  <main class="mint-frame">
     <h1 class="page-title">SELL</h1>
     <p class="page-intro">
       Upload and sell your bag products here.
     </p>
 
-    <div class="mint-layout">
+    <!-- <div class="mint-layout">
       <section class="editorial-card mint-panel">
         <h2>Mint Passport</h2>
 
@@ -170,7 +170,166 @@
           </p>
         </div>
       </aside>
+    </div> -->
+    <div class="mint-wireframe-layout">
+  <!-- LEFT COLUMN -->
+  <div class="mint-left-column">
+    <aside class="editorial-card upload-card">
+      <div class="camera-section">
+        <div class="camera-topbar">
+          <button type="button" class="back-btn" id="backBtn" onclick="goBackToSourceOptions()" style="display: none;">Back</button>
+        </div>
+
+        <div class="verify-badge" id="verifyBadge" style="display: none;">Phase: idle</div>
+        <h2>Product Image</h2>
+
+        <div class="source-toggle">
+          <button type="button" id="cameraModeBtn" onclick="switchImageSource('camera')">Use Live Camera</button>
+          <button type="button" id="uploadModeBtn" class="active" onclick="switchImageSource('upload')">Upload Image</button>
+        </div>
+
+        <div id="uploadPanel" class="source-panel hidden">
+          <input id="imageInput" type="file" accept="image/*" onchange="handleImageUpload(event)" />
+        </div>
+
+        <div id="cameraPanel" class="source-panel hidden">
+          <video id="videoStream" autoplay muted playsinline></video>
+          <div class="camera-controls">
+            <button type="button" class="start-camera-btn" id="startCameraBtn" onclick="startCamera()">Start Camera</button>
+            <button type="button" class="capture-btn" id="captureBtn" onclick="captureFromCamera()" style="display: none;">Capture</button>
+            <button type="button" class="stop-camera-btn" id="stopCameraBtn" onclick="stopCamera()" style="display: none;">Stop Camera</button>
+          </div>
+        </div>
+
+        <img id="capturedImage" alt="Captured image" />
+        <canvas id="canvas"></canvas>
+
+        <div class="camera-controls">
+          <button type="button" class="approve-btn" id="approveBtn" onclick="approveImage()" style="display: none;">Approve Image</button>
+          <button type="button" class="retake-btn" id="clearBtn" onclick="clearSelectedImage()" style="display: none;">Retake Image</button>
+        </div>
+
+        <div class="camera-status" id="cameraStatus"></div>
+        <div class="image-preview" id="imagePreview"></div>
+      </div>
+
+      <div class="preview-copy">
+        <h2>Upload Bag Image</h2>
+        <p>
+          Capture a photo of your bag or upload an existing image. This will be linked to the NFT passport you mint for your item.
+        </p>
+      </div>
+    </aside>
+
+    <aside class="editorial-card token-card">
+      <h2>View NFT</h2>
+
+      <label class="form-label" for="tokenId">TOKEN ID</label>
+      <input class="form-input" id="tokenId" type="number" min="0" placeholder="0" />
+
+      <button id="viewBtn" class="secondary-pill-btn">VIEW NFT</button>
+      <div id="viewResult" class="view-result-box"></div>
+    </aside>
+  </div>
+
+  <!-- RIGHT LARGE PANEL -->
+  <section class="editorial-card mint-main-card">
+    <div class="mint-main-split">
+      <!-- LEFT SIDE -->
+      <div class="mint-main-left">
+        <h2>Mint Passport</h2>
+
+        <label class="form-label" for="bagName">BAG NAME</label>
+        <input class="form-input" id="bagName" placeholder="Lady Dior" />
+
+        <label class="form-label" for="itemDescription">ITEM DESCRIPTION</label>
+        <textarea class="form-textarea" id="itemDescription" rows="3" placeholder="Describe the item's style, size, and notable details"></textarea>
+
+        <div class="double-field-row">
+          <div>
+            <label class="form-label" for="condition">CONDITION</label>
+            <div class="searchable-select" id="conditionSelectWrap">
+              <input class="form-input" id="condition" autocomplete="off" placeholder="Search or select condition" />
+              <div class="searchable-options" id="conditionOptions"></div>
+            </div>
+          </div>
+
+          <div>
+            <label class="form-label" for="material">MATERIAL</label>
+            <div class="searchable-select" id="materialSelectWrap">
+              <input class="form-input" id="material" autocomplete="off" placeholder="Search or select material" />
+              <div class="searchable-options" id="materialOptions"></div>
+            </div>
+          </div>
+        </div>
+
+        <label class="form-label" for="listingMode">LISTING MODE</label>
+        <div class="searchable-select listing-select-wrap" id="listingModeWrap">
+          <select class="form-select listing-select" id="listingMode">
+            <option value="fixed">Set Fixed Price</option>
+            <option value="auction">Create Bid (Auction)</option>
+            <option value="donate">Donate for Free</option>
+          </select>
+        </div>
+
+        <div id="fixedPriceWrap">
+          <label class="form-label" for="fixedPriceDash">FIXED PRICE (DASH)</label>
+          <input class="form-input" id="fixedPriceDash" type="number" min="0" step="0.00000001" placeholder="e.g. 1.25" />
+        </div>
+
+        <div id="auctionWrap" style="display: none;">
+          <label class="form-label" for="startBidDash">STARTING BID (DASH)</label>
+          <input class="form-input" id="startBidDash" type="number" min="0" step="0.00000001" placeholder="e.g. 0.5" />
+        </div>
+
+        <label class="form-label" for="listingEndTime">LISTING END TIME</label>
+        <input class="form-input" id="listingEndTime" type="datetime-local" />
+
+        <label class="form-label" for="sellerWalletId">SELLER WALLET ID (for listing/bid records)</label>
+        <input class="form-input" id="sellerWalletId" placeholder="Your wallet ID" />
+      </div>
+
+      <div class="mint-vertical-divider"></div>
+
+      <!-- RIGHT SIDE -->
+      <div class="mint-main-right">
+        <h2>Identity Transfer Verification</h2>
+        <p class="form-note">
+          Instead of TXID, verify by transferring Platform credits from the minter identity to the merchant identity.
+        </p>
+
+        <label class="form-label" for="dashAddress">MERCHANT IDENTITY ID</label>
+        <input class="form-input" id="dashAddress" readonly />
+
+        <label class="form-label" for="minterIdentityId">MINTER IDENTITY ID</label>
+        <input class="form-input" id="minterIdentityId" placeholder="e.g. 7QC9..." />
+
+        <label class="form-label" for="authAddress">AUTH KEY ADDRESS</label>
+        <input class="form-input" id="authAddress" placeholder="0x..." />
+
+        <label class="form-label" for="transferCredits">TRANSFER CREDITS</label>
+        <input class="form-input" id="transferCredits" type="number" min="1" step="1" placeholder="e.g. 1000000" />
+
+        <label class="form-label" for="transferIdentityIndex">IDENTITY INDEX</label>
+        <input class="form-input" id="transferIdentityIndex" type="number" min="0" step="1" value="0" />
+
+        <label class="form-label" for="authChallengeMessage">SIGN THIS CHALLENGE MESSAGE</label>
+        <textarea class="form-textarea" id="authChallengeMessage" rows="4" readonly placeholder="Challenge message will appear after requesting verification."></textarea>
+
+        <button id="copyChallengeBtn" type="button" class="secondary-pill-btn">COPY CHALLENGE</button>
+
+        <label class="form-label" for="authSignature">AUTH KEY SIGNATURE</label>
+        <textarea class="form-textarea" id="authSignature" rows="3" placeholder="Paste signature for the challenge message"></textarea>
+
+        <button id="verifyDashBtn" type="button" class="secondary-pill-btn">VERIFY IDENTITY TRANSFER</button>
+        <div id="dashPaymentStatus" class="status-box"></div>
+
+        <button id="mintBtn" type="button" class="primary-pill-btn">MINT NFT</button>
+        <div id="status" class="status-box"></div>
+      </div>
     </div>
+  </section>
+</div>
   </main>
 <script src="mint-ui.js"></script>
 <script src="header.js"></script>
