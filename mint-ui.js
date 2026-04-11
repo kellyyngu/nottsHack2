@@ -20,6 +20,87 @@ let paymentVerified = false;
 let verifiedDashTxId = "";
 const MAX_CAPTURE_WIDTH = 512;
 const TARGET_IMAGE_BYTES = 120 * 1024;
+const ALLOWED_CONDITIONS = ["Excellent", "Good", "Fair", "Used", "New"];
+const ALLOWED_MATERIALS = [
+  "Lambskin",
+  "Calfskin",
+  "Saffiano leather",
+  "Full-grain leather",
+  "Epi leather",
+  "Canvas",
+  "Nylon",
+  "Polyester",
+  "Suede",
+  "Nubuck",
+  "Exotic",
+  "Other"
+];
+
+function toCanonicalChoice(value, allowedValues) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return allowedValues.find((item) => item.toLowerCase() === normalized) || "";
+}
+
+function initSearchableDropdown(inputId, optionsId, choices) {
+  const input = document.getElementById(inputId);
+  const optionsBox = document.getElementById(optionsId);
+
+  if (!input || !optionsBox) {
+    return;
+  }
+
+  const renderOptions = (filterText = "") => {
+    const query = filterText.trim().toLowerCase();
+    const filtered = choices.filter((choice) => choice.toLowerCase().includes(query));
+
+    optionsBox.innerHTML = "";
+    if (!filtered.length) {
+      const empty = document.createElement("button");
+      empty.type = "button";
+      empty.className = "searchable-option";
+      empty.textContent = "No matching options";
+      empty.disabled = true;
+      optionsBox.appendChild(empty);
+      return;
+    }
+
+    for (const choice of filtered) {
+      const optionBtn = document.createElement("button");
+      optionBtn.type = "button";
+      optionBtn.className = "searchable-option";
+      optionBtn.textContent = choice;
+      optionBtn.addEventListener("click", () => {
+        input.value = choice;
+        optionsBox.classList.remove("show");
+      });
+      optionsBox.appendChild(optionBtn);
+    }
+  };
+
+  input.addEventListener("focus", () => {
+    renderOptions(input.value);
+    optionsBox.classList.add("show");
+  });
+
+  input.addEventListener("input", () => {
+    renderOptions(input.value);
+    optionsBox.classList.add("show");
+  });
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      optionsBox.classList.remove("show");
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!optionsBox.contains(event.target) && event.target !== input) {
+      optionsBox.classList.remove("show");
+    }
+  });
+
+  renderOptions();
+}
 
 function showDashPaymentStatus(message, isError = false) {
   if (!dashPaymentStatusEl) {
@@ -42,7 +123,9 @@ async function loadDashPaymentInfo() {
 
     const dashAddressInput = document.getElementById("dashAddress");
     dashAddressInput.value = data.merchantAddress || "";
-    showDashPaymentStatus(`Pay at least ${data.minimumDash} DASH, then verify your TXID.`);
+    showDashPaymentStatus(
+      `Pay at least ${data.minimumDash} DASH, verify your TXID to mint your item as an NFT.`
+    );
   } catch (err) {
     showDashPaymentStatus(err.message || String(err), true);
   }
@@ -369,12 +452,57 @@ async function approveImage() {
 
 async function mintNftFlow() {
   const bagName = document.getElementById("bagName").value.trim();
-  const condition = document.getElementById("condition").value.trim();
-  const material = document.getElementById("material").value.trim();
+  const itemDescription = document.getElementById("itemDescription").value.trim();
+  const selectedCondition = document.getElementById("condition").value.trim();
+  const selectedMaterial = document.getElementById("material").value.trim();
+  const condition = toCanonicalChoice(selectedCondition, ALLOWED_CONDITIONS);
+  const material = toCanonicalChoice(selectedMaterial, ALLOWED_MATERIALS);
+  const listingMode = document.getElementById("listingMode").value;
+  const fixedPriceDash = document.getElementById("fixedPriceDash").value.trim();
+  const startBidDash = document.getElementById("startBidDash").value.trim();
+  const listingEndTime = document.getElementById("listingEndTime").value;
+  const sellerWalletId = document.getElementById("sellerWalletId").value.trim();
   const dashTxId = document.getElementById("dashTxId").value.trim();
 
-  if (!bagName || !condition || !material) {
+  if (!bagName || !selectedCondition || !selectedMaterial) {
     showStatus("Please fill all fields.", true);
+    return;
+  }
+
+  if (!condition) {
+    showStatus(`Condition must be one of: ${ALLOWED_CONDITIONS.join(", ")}.`, true);
+    return;
+  }
+
+  if (!material) {
+    showStatus(`Material must be one of: ${ALLOWED_MATERIALS.join(", ")}.`, true);
+    return;
+  }
+
+  if (listingMode === "fixed") {
+    const fixed = Number(fixedPriceDash);
+    if (!Number.isFinite(fixed) || fixed <= 0) {
+      showStatus("Fixed price must be a positive DASH amount.", true);
+      return;
+    }
+  }
+
+  if (listingMode === "auction") {
+    const start = Number(startBidDash);
+    if (!Number.isFinite(start) || start <= 0) {
+      showStatus("Starting bid must be a positive DASH amount.", true);
+      return;
+    }
+  }
+
+  if (!listingEndTime) {
+    showStatus("Listing end time is required.", true);
+    return;
+  }
+
+  const endAt = Date.parse(listingEndTime);
+  if (!Number.isFinite(endAt) || endAt <= Date.now()) {
+    showStatus("Listing end time must be in the future.", true);
     return;
   }
 
@@ -416,10 +544,29 @@ async function mintNftFlow() {
 
     showStatus("Minting new NFT...");
 
+    const listing = {
+      mode: listingMode,
+      listingEndTime,
+      sellerWalletId
+    };
+    if (listingMode === "fixed") {
+      listing.fixedPriceDash = Number(fixedPriceDash);
+    } else if (listingMode === "auction") {
+      listing.startBidDash = Number(startBidDash);
+    }
+
     const res = await fetch("/mint", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bagName, condition, material, imageURI: uploadData.imageURI, dashTxId })
+      body: JSON.stringify({
+        bagName,
+        itemDescription,
+        condition,
+        material,
+        imageURI: uploadData.imageURI,
+        dashTxId,
+        listing
+      })
     });
 
     const data = await res.json();
@@ -433,11 +580,23 @@ async function mintNftFlow() {
         ? ` | tokenId: ${data.tokenId}`
         : "";
 
-    showStatus(`Success! Minted. Tx hash: ${data.txHash}${mintedTokenPart}`);
+    const storageChain = data?.nftStorage?.chain || "sepolia";
+    const storageFee = data?.nftStorage?.estimatedStorageFeeEth;
+    const sponsoredStoragePart = storageFee
+      ? ` | sponsored storage fee: ~${storageFee} ETH on ${storageChain}`
+      : ` | storage written on ${storageChain} (ETH sponsored by backend)`;
+
+    showStatus(`Success! Minted. Tx hash: ${data.txHash}${mintedTokenPart}${sponsoredStoragePart}`);
 
     document.getElementById("bagName").value = "";
+    document.getElementById("itemDescription").value = "";
     document.getElementById("condition").value = "";
     document.getElementById("material").value = "";
+    document.getElementById("listingMode").value = "fixed";
+    document.getElementById("fixedPriceDash").value = "";
+    document.getElementById("startBidDash").value = "";
+    document.getElementById("listingEndTime").value = "";
+    document.getElementById("sellerWalletId").value = "";
     document.getElementById("dashTxId").value = "";
     capturedImageData = null;
     imageApproved = false;
@@ -453,6 +612,18 @@ async function mintNftFlow() {
   } finally {
     mintBtn.disabled = false;
   }
+}
+
+function updateListingModeFields() {
+  const mode = document.getElementById("listingMode")?.value;
+  const fixedWrap = document.getElementById("fixedPriceWrap");
+  const auctionWrap = document.getElementById("auctionWrap");
+  if (!fixedWrap || !auctionWrap) {
+    return;
+  }
+
+  fixedWrap.style.display = mode === "fixed" ? "block" : "none";
+  auctionWrap.style.display = mode === "auction" ? "block" : "none";
 }
 
 async function viewNFT() {
@@ -506,6 +677,12 @@ document.addEventListener("DOMContentLoaded", () => {
   mintBtn.addEventListener("click", mintNftFlow);
   viewBtn.addEventListener("click", viewNFT);
   verifyDashBtn.addEventListener("click", verifyDashPayment);
+
+  initSearchableDropdown("condition", "conditionOptions", ALLOWED_CONDITIONS);
+  initSearchableDropdown("material", "materialOptions", ALLOWED_MATERIALS);
+
+  document.getElementById("listingMode")?.addEventListener("change", updateListingModeFields);
+  updateListingModeFields();
 
   loadDashPaymentInfo();
 

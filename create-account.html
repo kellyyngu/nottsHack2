@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Create Account</title>
+  <title>Merchant Address Setup</title>
   <link rel="stylesheet" href="styles.css" />
   <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
 </head>
@@ -26,46 +26,24 @@
   </header>
 
   <main class="page-frame">
-    <h1 class="page-title">CREATE ACCOUNT</h1>
+    <h1 class="page-title">MERCHANT ADDRESS</h1>
   <p class="page-intro">
-    Join #BAG to save favorites, buy, sell, and track orders.
+    Login is not required. Set your Dash merchant address in <code>.env</code> as <code>DASH_MERCHANT_ADDRESS</code> and users can pay or list items directly.
   </p>
     
 
     <section class="editorial-card auth-card">
-      <form class="auth-form" onsubmit="handleCreateAccount(event)">
-        <label class="form-label" for="fullName">Full name</label>
-        <input id="fullName" class="form-input" type="text" placeholder="Your name" required />
-
-        <label class="form-label" for="createEmail">Email</label>
-        <input id="createEmail" class="form-input" type="email" placeholder="you@example.com" required />
-
-        <label class="form-label" for="createPassword">Password</label>
-        <input id="createPassword" class="form-input" type="password" placeholder="Create password" required />
-
-        <label class="form-label" for="wallet">Wallet address</label>
-        <input id="wallet" class="form-input" type="text" placeholder="Optional for Web3 checkout" />
-
-        <button class="primary-pill-btn" type="submit">Create Account</button>
-      </form>
-
-      <div class="auth-status" id="createStatus"></div>
-
+      <p class="form-note">Required setting</p>
+      <p><code>DASH_MERCHANT_ADDRESS=XyourDashAddress</code></p>
+      <p class="form-note">Optional settings</p>
+      <p><code>DASH_NETWORK=testnet</code></p>
+      <p><code>DASH_MIN_PAYMENT=0.001</code></p>
       <div class="auth-links">
-        <span>Already have an account?</span>
-        <a href="signin.html">Sign in</a>
+        <a href="mint.html">Go to sell page</a>
+        <a href="marketplace.html">Go to marketplace</a>
       </div>
     </section>
   </main>
-
-  <script>
-    function handleCreateAccount(event) {
-      event.preventDefault();
-      const box = document.getElementById("createStatus");
-      box.className = "auth-status show";
-      box.textContent = "Demo account created. Hook this to your backend later.";
-    }
-  </script>
 
   <script src="header.js"></script>
 </body>

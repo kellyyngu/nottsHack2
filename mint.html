@@ -26,7 +26,7 @@
   <main class="page-frame">
     <h1 class="page-title">SELL</h1>
     <p class="page-intro">
-      Create a digital passport for your pre-loved luxury item. Enter the bag details below and mint its on-chain identity.
+      Hybrid model: users pay and receive value in Dash, while the platform sponsor pays a small ETH gas fee to store the NFT data on Sepolia.
     </p>
 
     <div class="mint-layout">
@@ -36,16 +36,50 @@
         <label class="form-label" for="bagName">BAG NAME</label>
         <input class="form-input" id="bagName" placeholder="Lady Dior" />
 
+        <label class="form-label" for="itemDescription">ITEM DESCRIPTION</label>
+        <textarea class="form-textarea" id="itemDescription" rows="3" placeholder="Describe the item's style, size, and notable details"></textarea>
+
         <label class="form-label" for="condition">CONDITION</label>
-        <input class="form-input" id="condition" placeholder="Excellent" />
+        <div class="searchable-select" id="conditionSelectWrap">
+          <input class="form-input" id="condition" autocomplete="off" placeholder="Search or select condition" />
+          <div class="searchable-options" id="conditionOptions"></div>
+        </div>
 
         <label class="form-label" for="material">MATERIAL</label>
-        <input class="form-input" id="material" placeholder="Lambskin" />
+        <div class="searchable-select" id="materialSelectWrap">
+          <input class="form-input" id="material" autocomplete="off" placeholder="Search or select material" />
+          <div class="searchable-options" id="materialOptions"></div>
+        </div>
+
+        <label class="form-label" for="listingMode">LISTING MODE</label>
+        <div class="searchable-select listing-select-wrap" id="listingModeWrap">
+          <select class="form-select listing-select" id="listingMode">
+            <option value="fixed">Set Fixed Price</option>
+            <option value="auction">Create Bid (Auction)</option>
+            <option value="donate">Donate for Free</option>
+          </select>
+        </div>
+
+        <div id="fixedPriceWrap">
+          <label class="form-label" for="fixedPriceDash">FIXED PRICE (DASH)</label>
+          <input class="form-input" id="fixedPriceDash" type="number" min="0" step="0.00000001" placeholder="e.g. 1.25" />
+        </div>
+
+        <div id="auctionWrap" style="display: none;">
+          <label class="form-label" for="startBidDash">STARTING BID (DASH)</label>
+          <input class="form-input" id="startBidDash" type="number" min="0" step="0.00000001" placeholder="e.g. 0.5" />
+        </div>
+
+        <label class="form-label" for="listingEndTime">LISTING END TIME</label>
+        <input class="form-input" id="listingEndTime" type="datetime-local" />
+
+        <label class="form-label" for="sellerWalletId">SELLER WALLET ID (for listing/bid records)</label>
+        <input class="form-input" id="sellerWalletId" placeholder="Your wallet ID" />
 
         <div class="mint-divider"></div>
 
         <h2>Dash Payment</h2>
-        <p class="form-note">Pay to the merchant Dash address, then paste the payment TXID before minting.</p>
+        <p class="form-note">User settlement is in Dash only. Pay to the merchant Dash address, then paste the TXID before minting.</p>
 
         <label class="form-label" for="dashAddress">DASH MERCHANT ADDRESS</label>
         <input class="form-input" id="dashAddress" readonly />
@@ -59,7 +93,6 @@
         <button id="mintBtn" type="button" class="primary-pill-btn">MINT NFT</button>
 
         <p class="form-note">
-          This page sends a POST request to <code>/mint</code>.
         </p>
 
         <div id="status" class="status-box"></div>

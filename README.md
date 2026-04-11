@@ -1,8 +1,14 @@
 # Luxury Passport NFT
 
-Production-style local demo for minting and reading ERC-721 bag passports without MetaMask.
+Hybrid payment/storage demo where users settle in Dash while the backend sponsor writes NFT data on Sepolia using ETH gas.
 
-The app uses a backend signer (server-side private key) to mint NFTs, then exposes read endpoints used by a simple web UI.
+The app uses a backend signer (server-side private key) to mint NFTs on Sepolia and exposes read endpoints used by a simple web UI.
+
+Hybrid model:
+
+- Users pay and receive value in Dash.
+- Backend verifies Dash TXIDs against the configured merchant address.
+- Developer backend signer pays a small ETH fee to store NFT data on Sepolia.
 
 ## Overview
 
@@ -37,12 +43,15 @@ You can set environment variables directly in PowerShell (or use `.env.example` 
 - `CONTRACT_ADDRESS`: deployed NFT contract address
 - `PRIVATE_KEY`: backend signer private key (for minting)
 - `PORT`: Express server port
-- `BASE_SEPOLIA_RPC_URL`: Base Sepolia RPC endpoint for deployment
-- `BASE_SEPOLIA_PRIVATE_KEY`: deployer private key for Base Sepolia
+- `BASE_SEPOLIA_RPC_URL`: Base Sepolia RPC endpoint for deployment (optional if using Base)
+- `BASE_SEPOLIA_PRIVATE_KEY`: deployer private key for Base Sepolia (optional if using Base)
 - `DASH_NETWORK`: `testnet` or `mainnet` (used for payment verification)
 - `DASH_MERCHANT_ADDRESS`: Dash address that receives user payments
 - `DASH_MIN_PAYMENT`: minimum required Dash amount before minting
 - `DASH_EXPLORER_BASE_URL`: optional explorer API override
+- `STORAGE_CHAIN_NAME`: chain name for NFT storage metadata (default: `sepolia`)
+- `STORAGE_CHAIN_ID`: expected chain ID for storage signer (default: `11155111`)
+- `ENFORCE_STORAGE_CHAIN`: when `true`, reject mints if signer RPC is not on configured storage chain
 
 PowerShell example:
 
@@ -108,7 +117,7 @@ npm run deploy:ignition:base-sepolia
 
 3. Copy the deployed contract address from Ignition output and set `CONTRACT_ADDRESS` for the backend.
 
-## Dash Payment TXID Mint Flow
+## Dash Payment TXID Mint Flow (Hybrid)
 
 The mint flow now requires a verified Dash payment transaction ID (`dashTxId`) before minting.
 
@@ -116,7 +125,8 @@ The mint flow now requires a verified Dash payment transaction ID (`dashTxId`) b
 2. User sends Dash payment from their own wallet.
 3. User pastes the resulting Dash TXID into the sell form and clicks verify.
 4. Backend validates TXID via Dash explorer and confirms payment to `DASH_MERCHANT_ADDRESS`.
-5. If valid, minting proceeds and stores `dashTxId` on-chain in NFT metadata.
+5. If valid, backend signer submits the mint transaction and stores `dashTxId` on-chain in NFT metadata.
+6. NFT record is stored on Sepolia; gas fee is paid by backend signer in ETH.
 
 ## API Reference
 
@@ -140,7 +150,9 @@ Request body:
 {
   "bagName": "Lady Dior",
   "condition": "Excellent",
-  "material": "Lambskin"
+  "material": "Lambskin",
+  "imageURI": "/uploads/example.jpg",
+  "dashTxId": "<64-char-dash-transaction-id>"
 }
 ```
 
@@ -149,9 +161,20 @@ Success response:
 ```json
 {
   "success": true,
+  "paymentModel": "dash-user-payments + developer-sponsored-sepolia-storage",
   "txHash": "0x...",
+  "dashTxId": "...",
   "tokenId": "0",
-  "blockNumber": 6
+  "blockNumber": 6,
+  "nftStorage": {
+    "chain": "sepolia",
+    "chainId": 11155111,
+    "contractAddress": "0x...",
+    "owner": "0x...",
+    "storageFeeCurrency": "ETH",
+    "storageFeePayer": "0x...",
+    "estimatedStorageFeeEth": "0.000123"
+  }
 }
 ```
 
@@ -169,7 +192,9 @@ Success response:
   "metadata": {
     "bagName": "Lady Dior",
     "condition": "Excellent",
-    "material": "Lambskin"
+    "material": "Lambskin",
+    "imageURI": "/uploads/example.jpg",
+    "dashTxId": "..."
   }
 }
 ```

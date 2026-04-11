@@ -20,9 +20,23 @@ async function loadCatalog() {
 }
 
 function formatPrice(item) {
-  if (item.listing && item.listing.active && item.listing.priceWei) {
-    return `${item.listing.priceWei} wei`;
+  const listing = item.listing;
+  if (!listing || !listing.active) {
+    return "Not listed";
   }
+
+  if (listing.mode === "fixed") {
+    return `${listing.fixedPriceDash} DASH`;
+  }
+
+  if (listing.mode === "auction") {
+    return `Bid from ${listing.startBidDash} DASH`;
+  }
+
+  if (listing.mode === "donate") {
+    return "Donate";
+  }
+
   return "Not listed";
 }
 

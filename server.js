@@ -1,5 +1,5 @@
 import express from "express";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { ethers } from "ethers";
@@ -13,13 +13,15 @@ const PORT = process.env.PORT || 3000;
 const DASH_NETWORK = (process.env.DASH_NETWORK || "testnet").toLowerCase();
 const DASH_MERCHANT_ADDRESS = process.env.DASH_MERCHANT_ADDRESS || "";
 const DASH_MIN_PAYMENT = Number(process.env.DASH_MIN_PAYMENT || "0");
+const STORAGE_CHAIN_NAME = process.env.STORAGE_CHAIN_NAME || "sepolia";
+const STORAGE_CHAIN_ID = Number(process.env.STORAGE_CHAIN_ID || "11155111");
+const ENFORCE_STORAGE_CHAIN = String(process.env.ENFORCE_STORAGE_CHAIN || "false").toLowerCase() === "true";
 const DASH_EXPLORER_BASE_URL =
   process.env.DASH_EXPLORER_BASE_URL ||
   (DASH_NETWORK === "mainnet" ? "https://api.blockchair.com/dash" : "https://api.blockchair.com/dash/testnet");
-const ACCOUNT_FILE = path.join(process.cwd(), "data", "accounts.json");
-const ACCOUNT_CHALLENGE_TTL_MS = 10 * 60 * 1000;
-
-const accountChallenges = new Map();
+const LISTING_MODES = new Set(["fixed", "auction", "donate"]);
+const tokenListings = new Map();
+const tokenBids = new Map();
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.static("."));
@@ -67,271 +69,118 @@ function isValidDashTxid(txid) {
   return typeof txid === "string" && /^[a-fA-F0-9]{64}$/.test(txid.trim());
 }
 
-function normalizeEthAddress(address) {
-  if (typeof address !== "string") {
-    return "";
+function asTokenId(value) {
+  const num = Number(value);
+  return Number.isInteger(num) && num >= 0 ? num : null;
+}
+
+function asPositiveNumber(value) {
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function normalizeListingInput(input) {
+  const mode = String(input?.mode || "fixed").toLowerCase();
+  if (!LISTING_MODES.has(mode)) {
+    throw new Error("listing.mode must be one of: fixed, auction, donate.");
   }
 
-  const trimmed = address.trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  try {
-    return ethers.getAddress(trimmed);
-  } catch {
-    return "";
-  }
-}
-
-function normalizeDashAddress(address) {
-  return typeof address === "string" ? address.trim() : "";
-}
-
-function buildChallengeMessage({ purpose, walletAddress, merchantAddress, challengeId, nonce, expiresAt }) {
-  return [
-    "#BAG wallet authorization",
-    `Purpose: ${purpose}`,
-    `Wallet: ${walletAddress}`,
-    `Merchant address: ${merchantAddress || "(not provided)"}`,
-    `Challenge ID: ${challengeId}`,
-    `Nonce: ${nonce}`,
-    `Expires: ${new Date(expiresAt).toISOString()}`,
-    "Network: Sepolia"
-  ].join("\n");
-}
-
-async function loadAccounts() {
-  try {
-    const raw = await readFile(ACCOUNT_FILE, "utf8");
-    const payload = JSON.parse(raw);
-
-    if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-      return payload;
-    }
-  } catch (err) {
-    if (!err || err.code !== "ENOENT") {
-      throw err;
-    }
-  }
-
-  return {};
-}
-
-async function saveAccounts(accounts) {
-  await mkdir(path.dirname(ACCOUNT_FILE), { recursive: true });
-  await writeFile(ACCOUNT_FILE, `${JSON.stringify(accounts, null, 2)}\n`, "utf8");
-}
-
-function pruneExpiredChallenges() {
+  const sellerWalletId = String(input?.sellerWalletId || "").trim();
   const now = Date.now();
-  for (const [challengeId, challenge] of accountChallenges.entries()) {
-    if (!challenge || challenge.expiresAt <= now) {
-      accountChallenges.delete(challengeId);
+  const endAtRaw = String(input?.listingEndTime || input?.endsAt || "").trim();
+  const endAtMs = Date.parse(endAtRaw);
+  if (!endAtRaw || !Number.isFinite(endAtMs) || endAtMs <= now) {
+    throw new Error("listingEndTime must be a valid future datetime.");
+  }
+  const endsAt = new Date(endAtMs).toISOString();
+
+  if (mode === "fixed") {
+    const fixedPriceDash = asPositiveNumber(input?.fixedPriceDash);
+    if (!fixedPriceDash) {
+      throw new Error("fixedPriceDash must be a positive number for fixed-price listings.");
     }
-  }
-}
 
-function createAccountChallenge({ purpose, address, merchantAddress }) {
-  const walletAddress = normalizeEthAddress(address);
-  if (!walletAddress) {
-    throw new Error("A valid Sepolia wallet address is required.");
-  }
-
-  const normalizedMerchantAddress = normalizeDashAddress(merchantAddress);
-  if ((purpose === "register" || purpose === "update") && !normalizedMerchantAddress) {
-    throw new Error("A Dash merchant address is required.");
+    return {
+      mode,
+      fixedPriceDash,
+      sellerWalletId,
+      active: true,
+      createdAt: new Date(now).toISOString(),
+      endsAt
+    };
   }
 
-  const challengeId = randomUUID();
-  const nonce = randomUUID().replace(/-/g, "");
-  const expiresAt = Date.now() + ACCOUNT_CHALLENGE_TTL_MS;
-  const message = buildChallengeMessage({
-    purpose,
-    walletAddress,
-    merchantAddress: normalizedMerchantAddress,
-    challengeId,
-    nonce,
-    expiresAt
-  });
+  if (mode === "auction") {
+    const startBidDash = asPositiveNumber(input?.startBidDash);
+    if (!startBidDash) {
+      throw new Error("startBidDash must be a positive number for auctions.");
+    }
 
-  accountChallenges.set(challengeId, {
-    challengeId,
-    purpose,
-    walletAddress,
-    merchantAddress: normalizedMerchantAddress,
-    nonce,
-    message,
-    expiresAt
-  });
+    return {
+      mode,
+      startBidDash,
+      sellerWalletId,
+      active: true,
+      createdAt: new Date(now).toISOString(),
+      endsAt
+    };
+  }
 
   return {
-    challengeId,
-    message,
-    expiresAt,
-    walletAddress,
-    merchantAddress: normalizedMerchantAddress
+    mode: "donate",
+    sellerWalletId,
+    active: true,
+    createdAt: new Date(now).toISOString(),
+    endsAt
   };
 }
 
-function consumeAccountChallenge(challengeId) {
-  pruneExpiredChallenges();
-
-  const challenge = accountChallenges.get(challengeId);
-  if (!challenge) {
-    throw new Error("Challenge expired. Please request a new wallet signature.");
-  }
-
-  accountChallenges.delete(challengeId);
-  return challenge;
-}
-
-async function getAccountByAddress(address) {
-  const accounts = await loadAccounts();
-  const walletAddress = normalizeEthAddress(address);
-
-  if (!walletAddress) {
+function cloneListingForResponse(tokenId) {
+  const listing = tokenListings.get(tokenId);
+  if (!listing) {
     return null;
   }
 
-  return accounts[walletAddress.toLowerCase()] || null;
-}
+  const bids = tokenBids.get(tokenId) || [];
+  const highestBid = bids.length
+    ? bids.reduce((best, current) => (current.amountDash > best.amountDash ? current : best), bids[0])
+    : null;
 
-async function upsertAccount({ walletAddress, merchantAddress, createdAt, lastSignedInAt }) {
-  const accounts = await loadAccounts();
-  const normalizedWalletAddress = normalizeEthAddress(walletAddress);
-  if (!normalizedWalletAddress) {
-    throw new Error("A valid wallet address is required.");
-  }
-
-  const normalizedMerchantAddress = normalizeDashAddress(merchantAddress);
-  const now = new Date().toISOString();
-  const existing = accounts[normalizedWalletAddress.toLowerCase()] || null;
-
-  const account = {
-    walletAddress: normalizedWalletAddress,
-    merchantAddress: normalizedMerchantAddress,
-    network: "sepolia",
-    payoutNetwork: "dash",
-    createdAt: existing?.createdAt || createdAt || now,
-    updatedAt: now,
-    lastSignedInAt: lastSignedInAt || now
+  return {
+    ...listing,
+    highestBid: highestBid
+      ? {
+        walletId: highestBid.walletId,
+        amountDash: highestBid.amountDash,
+        createdAt: highestBid.createdAt
+      }
+      : null,
+    bidCount: bids.length
   };
-
-  accounts[normalizedWalletAddress.toLowerCase()] = account;
-  await saveAccounts(accounts);
-  return account;
 }
 
-app.get("/auth/account/:address", async (req, res) => {
-  try {
-    const account = await getAccountByAddress(req.params.address);
-
-    if (!account) {
-      return res.status(404).json({ success: false, error: "Account not found." });
-    }
-
-    return res.json({ success: true, account });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: err.message || String(err) });
+function clearExpiredListingIfNeeded(tokenId) {
+  const listing = tokenListings.get(tokenId);
+  if (!listing || !listing.endsAt) {
+    return;
   }
-});
 
-app.post("/auth/challenge", (req, res) => {
-  try {
-    const purpose = String(req.body?.purpose || "register").toLowerCase();
-    const address = req.body?.address;
-    const merchantAddress = req.body?.merchantAddress;
-
-    if (!["register", "signin", "update"].includes(purpose)) {
-      return res.status(400).json({ success: false, error: "Invalid auth purpose." });
-    }
-
-    const challenge = createAccountChallenge({ purpose, address, merchantAddress });
-    return res.json({ success: true, ...challenge });
-  } catch (err) {
-    return res.status(400).json({ success: false, error: err.message || String(err) });
+  const now = Date.now();
+  const end = Date.parse(listing.endsAt);
+  if (Number.isFinite(end) && end <= now) {
+    tokenListings.delete(tokenId);
+    tokenBids.delete(tokenId);
   }
-});
+}
 
-app.post("/auth/register", async (req, res) => {
-  try {
-    const challengeId = String(req.body?.challengeId || "").trim();
-    const address = req.body?.address;
-    const merchantAddress = req.body?.merchantAddress;
-    const signature = String(req.body?.signature || "").trim();
-
-    if (!challengeId || !signature) {
-      return res.status(400).json({ success: false, error: "challengeId and signature are required." });
-    }
-
-    const challenge = consumeAccountChallenge(challengeId);
-    const walletAddress = normalizeEthAddress(address);
-    const normalizedMerchantAddress = normalizeDashAddress(merchantAddress);
-
-    if (!walletAddress || walletAddress.toLowerCase() !== challenge.walletAddress.toLowerCase()) {
-      return res.status(400).json({ success: false, error: "Wallet address does not match the challenge." });
-    }
-
-    if (!normalizedMerchantAddress) {
-      return res.status(400).json({ success: false, error: "Dash merchant address is required." });
-    }
-
-    const recoveredAddress = normalizeEthAddress(ethers.verifyMessage(challenge.message, signature));
-    if (!recoveredAddress || recoveredAddress.toLowerCase() !== walletAddress.toLowerCase()) {
-      return res.status(401).json({ success: false, error: "Signature verification failed." });
-    }
-
-    const account = await upsertAccount({
-      walletAddress,
-      merchantAddress: normalizedMerchantAddress
-    });
-
-    return res.json({ success: true, status: challenge.purpose === "update" ? "updated" : "created", account });
-  } catch (err) {
-    return res.status(400).json({ success: false, error: err.message || String(err) });
+function getHighestBidAmount(tokenId) {
+  const bids = tokenBids.get(tokenId) || [];
+  if (!bids.length) {
+    return 0;
   }
-});
 
-app.post("/auth/sign-in", async (req, res) => {
-  try {
-    const challengeId = String(req.body?.challengeId || "").trim();
-    const address = req.body?.address;
-    const signature = String(req.body?.signature || "").trim();
-
-    if (!challengeId || !signature) {
-      return res.status(400).json({ success: false, error: "challengeId and signature are required." });
-    }
-
-    const challenge = consumeAccountChallenge(challengeId);
-    const walletAddress = normalizeEthAddress(address);
-
-    if (!walletAddress || walletAddress.toLowerCase() !== challenge.walletAddress.toLowerCase()) {
-      return res.status(400).json({ success: false, error: "Wallet address does not match the challenge." });
-    }
-
-    const recoveredAddress = normalizeEthAddress(ethers.verifyMessage(challenge.message, signature));
-    if (!recoveredAddress || recoveredAddress.toLowerCase() !== walletAddress.toLowerCase()) {
-      return res.status(401).json({ success: false, error: "Signature verification failed." });
-    }
-
-    const existingAccount = await getAccountByAddress(walletAddress);
-    if (!existingAccount) {
-      return res.status(404).json({ success: false, error: "No account found for this wallet. Create one first." });
-    }
-
-    const account = await upsertAccount({
-      walletAddress,
-      merchantAddress: existingAccount.merchantAddress,
-      createdAt: existingAccount.createdAt,
-      lastSignedInAt: new Date().toISOString()
-    });
-
-    return res.json({ success: true, status: "signed-in", account });
-  } catch (err) {
-    return res.status(400).json({ success: false, error: err.message || String(err) });
-  }
-});
+  return bids.reduce((best, current) => (current.amountDash > best ? current.amountDash : best), 0);
+}
 
 async function getDashPaymentSummary(txid) {
   const normalizedTxid = txid.trim();
@@ -379,9 +228,14 @@ app.get("/dash/payment-info", (_req, res) => {
 
   return res.json({
     success: true,
+    paymentModel: "dash-user-payments + developer-sponsored-sepolia-storage",
     network: DASH_NETWORK,
     merchantAddress: DASH_MERCHANT_ADDRESS,
     minimumDash: DASH_MIN_PAYMENT,
+    storageChain: STORAGE_CHAIN_NAME,
+    storageCurrency: "ETH",
+    nftStorage: "NFT metadata is written on Sepolia",
+    storageFeePayer: "developer-backend-signer",
     explorerTxPrefix: DASH_NETWORK === "mainnet"
       ? "https://blockchair.com/dash/transaction/"
       : "https://blockchair.com/dash/testnet/transaction/"
@@ -444,7 +298,7 @@ app.post("/upload-image", async (req, res) => {
 
 app.post("/mint", async (req, res) => {
   try {
-    const { bagName, condition, material, imageURI, dashTxId } = req.body;
+    const { bagName, condition, material, imageURI, dashTxId, listing } = req.body;
 
     if (!bagName || !condition || !material || !imageURI || !dashTxId) {
       return res.status(400).json({ error: "bagName, condition, material, imageURI and dashTxId are required." });
@@ -469,11 +323,21 @@ app.post("/mint", async (req, res) => {
     const { rpcUrl, contractAddress, privateKey } = getConfig(true);
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     const signer = new ethers.Wallet(privateKey, provider);
+    const signerAddress = await signer.getAddress();
+    const chain = await provider.getNetwork();
+    const chainId = Number(chain.chainId);
+
+    if (ENFORCE_STORAGE_CHAIN && chainId !== STORAGE_CHAIN_ID) {
+      return res.status(500).json({
+        success: false,
+        error: `Storage signer RPC is on chainId ${chainId}, expected ${STORAGE_CHAIN_ID} (${STORAGE_CHAIN_NAME}).`
+      });
+    }
 
     const result = await mintLuxuryPassport({
       contractAddress,
       signer,
-      to: await signer.getAddress(),
+      to: signerAddress,
       bagName,
       condition,
       material,
@@ -502,12 +366,36 @@ app.post("/mint", async (req, res) => {
       tokenId = null;
     }
 
+    const gasUsed = result.receipt?.gasUsed ?? null;
+    const effectiveGasPrice = result.receipt?.gasPrice ?? null;
+    const ethStorageFeeWei = gasUsed && effectiveGasPrice ? gasUsed * effectiveGasPrice : null;
+    const ethStorageFee = ethStorageFeeWei ? ethers.formatEther(ethStorageFeeWei) : null;
+
+    let listingSummary = null;
+    if (tokenId !== null) {
+      const normalizedListing = normalizeListingInput(listing || {});
+      tokenListings.set(Number(tokenId), normalizedListing);
+      tokenBids.delete(Number(tokenId));
+      listingSummary = cloneListingForResponse(Number(tokenId));
+    }
+
     return res.json({
       success: true,
+      paymentModel: "dash-user-payments + developer-sponsored-sepolia-storage",
       txHash: result.hash,
       dashTxId,
       tokenId,
-      blockNumber: result.receipt?.blockNumber ?? null
+      blockNumber: result.receipt?.blockNumber ?? null,
+      nftStorage: {
+        chain: STORAGE_CHAIN_NAME,
+        chainId,
+        contractAddress,
+        owner: signerAddress,
+        storageFeeCurrency: "ETH",
+        storageFeePayer: signerAddress,
+        estimatedStorageFeeEth: ethStorageFee
+      },
+      listing: listingSummary
     });
   } catch (err) {
     return res.status(500).json({
@@ -521,6 +409,8 @@ app.get("/read", async (req, res) => {
   try {
     const tokenIdRaw = req.query.tokenId;
     const tokenId = Number(tokenIdRaw);
+
+    clearExpiredListingIfNeeded(tokenId);
 
     if (!Number.isInteger(tokenId) || tokenId < 0) {
       return res.status(400).json({
@@ -559,7 +449,8 @@ app.get("/read", async (req, res) => {
         material: metadata.material,
         imageURI: metadata.imageURI,
         dashTxId: metadata.dashTxId
-      }
+      },
+      listing: cloneListingForResponse(tokenId)
     });
   } catch (err) {
     return res.status(500).json({
@@ -618,6 +509,7 @@ app.get("/catalog", async (req, res) => {
     const items = [];
     for (const id of unique) {
       try {
+        clearExpiredListingIfNeeded(id);
         const owner = await contract.ownerOf(id);
         const meta = await contract.getBagMetadata(id);
         items.push({
@@ -627,7 +519,8 @@ app.get("/catalog", async (req, res) => {
           material: meta.material,
           imageURI: meta.imageURI || "",
           dashTxId: meta.dashTxId || "",
-          owner
+          owner,
+          listing: cloneListingForResponse(id)
         });
       } catch (e) {
         // if a token was burned or inaccessible, skip
@@ -638,4 +531,68 @@ app.get("/catalog", async (req, res) => {
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message || String(err) });
   }
+});
+
+app.get("/listing/:tokenId", (req, res) => {
+  const tokenId = asTokenId(req.params.tokenId);
+  if (tokenId === null) {
+    return res.status(400).json({ success: false, error: "Invalid tokenId." });
+  }
+
+  clearExpiredListingIfNeeded(tokenId);
+  const listing = cloneListingForResponse(tokenId);
+  if (!listing) {
+    return res.status(404).json({ success: false, error: "No active listing for this item." });
+  }
+
+  return res.json({ success: true, tokenId, listing });
+});
+
+app.post("/listing/:tokenId/bid", (req, res) => {
+  const tokenId = asTokenId(req.params.tokenId);
+  if (tokenId === null) {
+    return res.status(400).json({ success: false, error: "Invalid tokenId." });
+  }
+
+  clearExpiredListingIfNeeded(tokenId);
+  const listing = tokenListings.get(tokenId);
+  if (!listing || listing.mode !== "auction") {
+    return res.status(400).json({ success: false, error: "This item is not accepting auction bids." });
+  }
+
+  const walletId = String(req.body?.walletId || "").trim();
+  const amountDash = asPositiveNumber(req.body?.amountDash);
+
+  if (!walletId) {
+    return res.status(400).json({ success: false, error: "walletId is required." });
+  }
+
+  if (!amountDash) {
+    return res.status(400).json({ success: false, error: "amountDash must be a positive number." });
+  }
+
+  const highestBidAmount = getHighestBidAmount(tokenId);
+  const minimumRequired = Math.max(Number(listing.startBidDash || 0), highestBidAmount + 0.00000001);
+  if (amountDash < minimumRequired) {
+    return res.status(400).json({
+      success: false,
+      error: `Bid must be at least ${minimumRequired.toFixed(8)} DASH.`
+    });
+  }
+
+  const bids = tokenBids.get(tokenId) || [];
+  const bid = {
+    walletId,
+    amountDash,
+    createdAt: new Date().toISOString()
+  };
+  bids.push(bid);
+  tokenBids.set(tokenId, bids);
+
+  return res.json({
+    success: true,
+    tokenId,
+    bid,
+    listing: cloneListingForResponse(tokenId)
+  });
 });

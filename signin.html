@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sign In</title>
+  <title>No Login Required</title>
   <link rel="stylesheet" href="styles.css" />
   <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
 </head>
@@ -25,39 +25,20 @@
   </header>
 
 <main class="page-frame">
-  <h1 class="page-title">SIGN IN</h1>
+  <h1 class="page-title">NO LOGIN REQUIRED</h1>
   <p class="page-intro">
-    Sign in to manage your cart, purchases, and listings.
+    Users can pay for items and list items directly with Dash payment TXIDs. No account or sign-in flow is needed.
   </p>
 
   <section class="editorial-card auth-card">
-      <form class="auth-form" onsubmit="handleSignIn(event)">
-        <label class="form-label" for="email">Email</label>
-        <input id="email" class="form-input" type="email" placeholder="you@example.com" required />
-
-        <label class="form-label" for="password">Password</label>
-        <input id="password" class="form-input" type="password" placeholder="••••••••" required />
-
-        <button class="primary-pill-btn" type="submit">Sign In</button>
-      </form>
-
-      <div class="auth-status" id="signinStatus"></div>
-
+      <p>To accept payments, set <code>DASH_MERCHANT_ADDRESS</code> in your server environment.</p>
       <div class="auth-links">
-        <span>New here?</span>
-        <a href="create-account.html">Create account</a>
+        <a href="mint.html">Go to sell page</a>
+        <a href="marketplace.html">Go to marketplace</a>
       </div>
     </section>
   </main>
 
-  <script>
-    function handleSignIn(event) {
-      event.preventDefault();
-      const box = document.getElementById("signinStatus");
-      box.className = "auth-status show";
-      box.textContent = "Demo sign-in complete. Connect this to your backend later.";
-    }
-  </script>
   <script src="header.js"></script>
 </body>
 </html>

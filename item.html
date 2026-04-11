@@ -49,6 +49,26 @@
           <div class="item-meta-row"><strong>Owner</strong><span id="metaOwner">-</span></div>
         </div>
 
+        <div class="mint-divider"></div>
+        <h2 style="margin: 0 0 10px; font-size: 1.4rem;">Listing & Bids</h2>
+        <div class="item-meta-list">
+          <div class="item-meta-row"><strong>Mode</strong><span id="listingModeText">-</span></div>
+          <div class="item-meta-row"><strong>Price / Start Bid</strong><span id="listingPriceText">-</span></div>
+          <div class="item-meta-row"><strong>Highest Bid</strong><span id="highestBidText">-</span></div>
+          <div class="item-meta-row"><strong>Listing Ends</strong><span id="listingEndText">-</span></div>
+        </div>
+
+        <div id="bidPanel" style="display: none; margin-top: 14px;">
+          <label class="form-label" for="bidWalletId">BIDDER WALLET ID</label>
+          <input class="form-input" id="bidWalletId" placeholder="Wallet ID" />
+
+          <label class="form-label" for="bidAmountDash">BID AMOUNT (DASH)</label>
+          <input class="form-input" id="bidAmountDash" type="number" min="0" step="0.00000001" placeholder="e.g. 1.75" />
+
+          <button id="placeBidBtn" type="button" class="secondary-pill-btn">PLACE BID</button>
+          <div id="bidStatus" class="status-box"></div>
+        </div>
+
         <div class="item-actions">
           <a href="index.html" class="hero-btn">BACK TO MARKETPLACE</a>
         </div>
