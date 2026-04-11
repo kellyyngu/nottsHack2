@@ -2,9 +2,6 @@ import { randomBytes } from "node:crypto";
 import { Identity, Identifier } from "@dashevo/evo-sdk";
 import { setupDashClient } from "./setupDashClient.mjs";
 
-console.log("NETWORK =", process.env.NETWORK);
-console.log("PLATFORM_MNEMONIC exists =", !!process.env.PLATFORM_MNEMONIC);
-
 const { sdk, keyManager, addressKeyManager } = await setupDashClient({
   requireIdentity: false,
 });
@@ -31,6 +28,11 @@ try {
   console.log("Identity registered!");
   console.log("Identity ID:", result.identity.id.toString());
 } catch (e) {
-  console.error("Full error:");
-  console.error(e?.stack || e);
+  const match = e.message?.match(/proof returned identity (\w+) but/);
+  if (match) {
+    console.log("Identity registered!");
+    console.log("Identity ID:", match[1]);
+  } else {
+    console.error("Something went wrong:", e.message);
+  }
 }

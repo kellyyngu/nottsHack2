@@ -61,7 +61,7 @@
 
     async function loadCatalog() {
       try {
-        const res = await fetch("/catalog");
+        const res = await fetch("/catalog-dash");
         const data = await res.json();
 
         if (!res.ok) {

@@ -226,7 +226,7 @@ app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
 
-app.get("/catalog", async (req, res) => {
+app.get("/catalog-dash", async (req, res) => {
   try {
     const { rpcUrl, contractAddress } = getConfig(false);
     const provider = new ethers.JsonRpcProvider(rpcUrl);
