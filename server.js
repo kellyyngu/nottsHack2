@@ -2,9 +2,15 @@ import express from "express";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { ethers } from "ethers";
 import Dash from "dash";
+import dotenv from "dotenv";
 import { mintLuxuryPassport } from "./mint.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, ".env") });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,6 +19,9 @@ const dashNetwork = process.env.DASH_NETWORK || "testnet";
 const dashMnemonic = process.env.DASH_MNEMONIC;
 const dashAppName = process.env.DASH_APP_NAME || "ecoTrace";
 const dashContractId = process.env.DASH_CONTRACT_ID;
+const dashDapiAddresses = process.env.DASH_DAPI_ADDRESSES
+  ? process.env.DASH_DAPI_ADDRESSES.split(",").map((value) => value.trim()).filter(Boolean)
+  : [];
 
 let dashClient;
 
@@ -26,7 +35,7 @@ function getDashClient() {
   }
 
   if (!dashClient) {
-    dashClient = new Dash.Client({
+    const dashClientOptions = {
       network: dashNetwork,
       wallet: { mnemonic: dashMnemonic },
       apps: {
@@ -34,7 +43,13 @@ function getDashClient() {
           contractId: dashContractId
         }
       }
-    });
+    };
+
+    if (dashDapiAddresses.length > 0) {
+      dashClientOptions.dapiAddresses = dashDapiAddresses;
+    }
+
+    dashClient = new Dash.Client(dashClientOptions);
   }
 
   return dashClient;

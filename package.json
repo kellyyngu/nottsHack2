@@ -1,5 +1,5 @@
 {
-  "name": "nottsHack4",
+  "name": "notts-hack2",
   "type": "module",
   "version": "1.0.0",
   "private": true,
@@ -7,7 +7,10 @@
     "compile": "npx hardhat compile",
     "deploy:localhost": "npx hardhat run deploy.js --network localhost",
     "deploy:node": "node deploy.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "dash:diagnose": "node dash/diagnose.js",
+    "dash:check-network": "node dash/network-check.js",
+    "dash:grpc-read": "node dash/grpc-read-test.js"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.0.7",
@@ -15,8 +18,10 @@
     "hardhat": "^3.3.0"
   },
   "dependencies": {
+    "@dashevo/evo-sdk": "^3.0.1",
     "@openzeppelin/contracts": "^4.9.3",
-    "dash": "^6.0.1",
+    "dash": "^3.25.16",
+    "dotenv": "^17.4.1",
     "express": "^4.21.2"
   }
 }
