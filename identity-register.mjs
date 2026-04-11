@@ -1,10 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { Identity, Identifier } from "@dashevo/evo-sdk";
-import { setupDashClient } from "./setupDashClient.mjs";
 
-const { sdk, keyManager, addressKeyManager } = await setupDashClient({
-  requireIdentity: false,
-});
 
 try {
   const identity = new Identity(new Identifier(randomBytes(32)));

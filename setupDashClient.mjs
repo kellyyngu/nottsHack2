@@ -56,6 +56,9 @@ try {
 const clientConfig = {
   // The network to connect to ('testnet' or 'mainnet')
   network: process.env.NETWORK || 'testnet',
+  testnet: () => EvoSDK.testnetTrusted(),
+  mainnet: () => EvoSDK.mainnetTrusted(),
+  local: () => EvoSDK.localTrusted(),
 
   // BIP39 mnemonic for wallet operations (identity & address tutorials).
   // Leave as null for read-only tutorials.

@@ -15,7 +15,7 @@
     "hardhat": "^3.3.0"
   },
   "dependencies": {
-    "@dashevo/evo-sdk": "^3.0.0",
+    "@dashevo/evo-sdk": "^3.0.1",
     "@openzeppelin/contracts": "^4.9.3",
     "bs58": "^6.0.0",
     "dash": "^6.0.1",
