@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payment</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="gallery-page">
+  <header class="gallery-topbar">
+    <div class="gallery-mini-brand">#BAG</div>
+    <nav class="gallery-nav">
+      <a href="index.html">HOME</a>
+      <a href="marketplace.html">BROWSE</a>
+      <a href="mint.html">SELL</a>
+      <a href="cart.html">CART</a>
+      <div class="nav-icons">
+      <i class='bx bx-user' id="accountIcon"></i>
+      <i class='bx bx-shopping-bag' id="cartIcon"></i>
+    </div>
+    </nav>
+  </header>
+
+  <main class="payment-shell">
+    <section class="auth-banner">
+      <h1>PAYMENT</h1>
+    </section>
+
+    <section class="payment-layout">
+      <div class="payment-panel">
+        <div class="payment-title">Checkout</div>
+
+        <form class="auth-form" onsubmit="handlePayment(event)">
+          <label class="auth-label" for="nameOnCard">Name on card</label>
+          <input id="nameOnCard" class="auth-input" type="text" placeholder="Name on card" required />
+
+          <label class="auth-label" for="cardNumber">Card number</label>
+          <input id="cardNumber" class="auth-input" type="text" placeholder="1234 5678 9012 3456" required />
+
+          <div class="payment-row">
+            <div>
+              <label class="auth-label" for="expiry">Expiry</label>
+              <input id="expiry" class="auth-input" type="text" placeholder="MM/YY" required />
+            </div>
+            <div>
+              <label class="auth-label" for="cvv">CVV</label>
+              <input id="cvv" class="auth-input" type="text" placeholder="123" required />
+            </div>
+          </div>
+
+          <label class="auth-label" for="billingAddress">Billing address</label>
+          <input id="billingAddress" class="auth-input" type="text" placeholder="Address" required />
+
+          <button class="auth-btn" type="submit">Pay Now</button>
+        </form>
+
+        <div class="auth-status" id="paymentStatus"></div>
+      </div>
+
+      <aside class="cart-summary">
+        <div class="summary-title">Payment Summary</div>
+        <div class="summary-row"><span>Subtotal</span><span>0.63 ETH</span></div>
+        <div class="summary-row"><span>Service Fee</span><span>0.01 ETH</span></div>
+        <div class="summary-row total"><span>Total</span><span>0.64 ETH</span></div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    function handlePayment(event) {
+      event.preventDefault();
+      const box = document.getElementById("paymentStatus");
+      box.className = "auth-status show";
+      box.textContent = "Demo payment successful. Connect this to Stripe or Web3 payment later.";
+    }
+  </script>
+</body>
+</html>

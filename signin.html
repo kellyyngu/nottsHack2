@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign In</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="gallery-page">
+  <header class="gallery-topbar">
+    <div class="gallery-mini-brand">#BAG</div>
+    <nav class="gallery-nav">
+      <a href="index.html">HOME</a>
+      <a href="marketplace.html">BROWSE</a>
+      <a href="mint.html">SELL</a>
+      <div class="nav-icons">
+      <i class='bx bx-user' id="accountIcon"></i>
+      <i class='bx bx-shopping-bag' id="cartIcon"></i>
+    </div>
+    </nav>
+  </header>
+
+  <main class="auth-shell">
+    <section class="auth-banner">
+      <h1>SIGN IN</h1>
+    </section>
+
+    <section class="auth-card">
+      <div class="auth-kicker">Welcome back</div>
+      <p class="auth-copy">Sign in to manage your listings, cart, and orders.</p>
+
+      <form class="auth-form" onsubmit="handleSignIn(event)">
+        <label class="auth-label" for="email">Email</label>
+        <input id="email" class="auth-input" type="email" placeholder="you@example.com" required />
+
+        <label class="auth-label" for="password">Password</label>
+        <input id="password" class="auth-input" type="password" placeholder="••••••••" required />
+
+        <button class="auth-btn" type="submit">Sign In</button>
+      </form>
+
+      <div class="auth-status" id="signinStatus"></div>
+
+      <div class="auth-links">
+        <span>New here?</span>
+        <a href="create-account.html">Create account</a>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    function handleSignIn(event) {
+      event.preventDefault();
+      const box = document.getElementById("signinStatus");
+      box.className = "auth-status show";
+      box.textContent = "Demo sign-in complete. Connect this to your backend later.";
+    }
+  </script>
+</body>
+</html>
