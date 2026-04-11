@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wallet Rewards</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+</head>
+<body class="item-body">
+  <header class="campaign-topbar">
+    <div class="campaign-mini-brand" a href="index.html">#BAG</div>
+    <nav class="campaign-nav">
+      <a href="index.html">HOME</a>
+      <a href="marketplace.html">BROWSE</a>
+      <a href="mint.html">SELL</a>
+      <a href="wallet-activity.html">WALLETS</a>
+      <a href="rewards.html" class="active">REWARDS</a>
+      <div class="nav-icons">
+        <i class='bx bx-user' id="accountIcon"></i>
+        <i class='bx bx-shopping-bag' id="cartIcon"></i>
+      </div>
+    </nav>
+  </header>
+
+  <main class="page-frame">
+    <h1 class="page-title">WALLET REWARDS</h1>
+    <p class="page-intro">Gamification rewards are based on each wallet's transaction count and listing count in the web app.</p>
+
+    <section class="editorial-card mint-panel">
+      <h2 style="margin-top: 0;">Reward Rules</h2>
+      <div class="view-result-box show" id="rewardRulesBox">2 transactions: 10% discount\n10 transactions: 20% discount\n20 transactions: discount with partnered shop</div>
+
+      <div class="mint-divider"></div>
+
+      <label class="form-label" for="rewardsWalletInput">CHECK WALLET REWARD</label>
+      <input id="rewardsWalletInput" class="form-input" placeholder="Enter wallet ID" />
+      <button id="rewardsWalletBtn" type="button" class="secondary-pill-btn">CHECK REWARD</button>
+      <div id="rewardsStatus" class="status-box"></div>
+      <div id="walletRewardDetails" class="view-result-box show"></div>
+
+      <div class="mint-divider"></div>
+      <h2 style="margin-top: 0;">Leaderboard</h2>
+      <div id="rewardsLeaderboard" class="view-result-box show"></div>
+    </section>
+  </main>
+
+  <script src="rewards.js"></script>
+  <script src="header.js"></script>
+</body>
+</html>

@@ -104,6 +104,59 @@ function getWalletActivity(walletId) {
   return [...records].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
 }
 
+function getRewardForTransactionCount(transactionCount) {
+  if (transactionCount >= 20) {
+    return {
+      tier: "partnered-shop",
+      discountPercent: 20,
+      label: "Partnered Shop Reward",
+      description: "20% discount and access to partnered shop discounts"
+    };
+  }
+
+  if (transactionCount >= 10) {
+    return {
+      tier: "gold",
+      discountPercent: 20,
+      label: "20% Discount",
+      description: "20% discount unlocked"
+    };
+  }
+
+  if (transactionCount >= 2) {
+    return {
+      tier: "starter",
+      discountPercent: 10,
+      label: "10% Discount",
+      description: "10% discount unlocked"
+    };
+  }
+
+  return {
+    tier: "none",
+    discountPercent: 0,
+    label: "No Reward Yet",
+    description: "Complete more transactions to unlock rewards"
+  };
+}
+
+function getWalletStats(walletId) {
+  const records = getWalletActivity(walletId);
+  const transactionCount = records.length;
+  const listingCount = records.filter((record) => record.type === "listing_created").length;
+  const bidCount = records.filter((record) => record.type === "bid_placed").length;
+  const reward = getRewardForTransactionCount(transactionCount);
+
+  return {
+    walletId: String(walletId || "").trim(),
+    transactionCount,
+    listingCount,
+    bidCount,
+    reward,
+    lastActivityAt: records.length ? records[0].timestamp : null
+  };
+}
+
 function normalizeListingInput(input) {
   const mode = String(input?.mode || "fixed").toLowerCase();
   if (!LISTING_MODES.has(mode)) {
@@ -644,11 +697,7 @@ app.post("/listing/:tokenId/bid", (req, res) => {
 });
 
 app.get("/wallet-activity/summary", (_req, res) => {
-  const wallets = Array.from(walletActivity.entries()).map(([walletId, records]) => ({
-    walletId,
-    transactionCount: records.length,
-    lastActivityAt: records.length ? records[records.length - 1].timestamp : null
-  }));
+  const wallets = Array.from(walletActivity.keys()).map((walletId) => getWalletStats(walletId));
 
   wallets.sort((a, b) => {
     const left = a.lastActivityAt ? Date.parse(a.lastActivityAt) : 0;
@@ -665,9 +714,48 @@ app.get("/wallet-activity/:walletId", (req, res) => {
     return res.status(400).json({ success: false, error: "walletId is required." });
   }
 
+  const stats = getWalletStats(walletId);
+
   return res.json({
     success: true,
     walletId,
+    stats,
     transactions: getWalletActivity(walletId)
+  });
+});
+
+app.get("/wallet-rewards/summary", (_req, res) => {
+  const wallets = Array.from(walletActivity.keys()).map((walletId) => getWalletStats(walletId));
+
+  wallets.sort((a, b) => {
+    if (b.transactionCount !== a.transactionCount) {
+      return b.transactionCount - a.transactionCount;
+    }
+    const left = a.lastActivityAt ? Date.parse(a.lastActivityAt) : 0;
+    const right = b.lastActivityAt ? Date.parse(b.lastActivityAt) : 0;
+    return right - left;
+  });
+
+  return res.json({
+    success: true,
+    rewardRules: [
+      { transactions: 2, reward: "10% discount" },
+      { transactions: 10, reward: "20% discount" },
+      { transactions: 20, reward: "20% + partnered shop discount" }
+    ],
+    wallets
+  });
+});
+
+app.get("/wallet-rewards/:walletId", (req, res) => {
+  const walletId = String(req.params.walletId || "").trim();
+  if (!walletId) {
+    return res.status(400).json({ success: false, error: "walletId is required." });
+  }
+
+  return res.json({
+    success: true,
+    walletId,
+    stats: getWalletStats(walletId)
   });
 });

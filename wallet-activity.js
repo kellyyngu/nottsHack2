@@ -58,7 +58,7 @@ async function loadSummary() {
     }
 
     walletSummaryEl.textContent = wallets
-      .map((w) => `${w.walletId} | transactions: ${w.transactionCount} | last: ${w.lastActivityAt || "-"}`)
+      .map((w) => `${w.walletId} | transactions: ${w.transactionCount} | listings: ${w.listingCount || 0} | reward: ${w.reward?.label || "No Reward"} | last: ${w.lastActivityAt || "-"}`)
       .join("\n");
   } catch (err) {
     walletSummaryEl.textContent = "Cannot get wallet summary.";
