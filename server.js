@@ -129,26 +129,35 @@ app.post("/mint", async (req, res) => {
 
     const ownerAddress = await signer.getAddress();
 
-    const dashDoc = await saveBagToDash({
-      tokenId: String(tokenId),
-      contractAddress,
-      chainId: "31337",
-      txHash: result.hash,
-      blockNumber: result.receipt?.blockNumber ?? null,
-      ownerAddress,
-      bagName,
-      condition,
-      material,
-      imageURI,
-      mintedAt: new Date().toISOString(),
-    });    
+    let dashDoc = null;
+    let dashError = null;
+
+    try {
+      dashDoc = await saveBagToDash({
+        tokenId: String(tokenId),
+        contractAddress,
+        chainId: "31337",
+        txHash: result.hash,
+        blockNumber: result.receipt?.blockNumber ?? null,
+        ownerAddress,
+        bagName,
+        condition,
+        material,
+        imageURI,
+        mintedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      dashError = e.message || String(e);
+    }
 
     return res.json({
       success: true,
       txHash: result.hash,
       tokenId,
       blockNumber: result.receipt?.blockNumber ?? null,
-      dashDocumentId: dashDoc.$id,
+      dashSaved: !!dashDoc,
+      dashDocumentId: dashDoc?.$id ?? null,
+      dashError,
     });
   } catch (err) {
     return res.status(500).json({
