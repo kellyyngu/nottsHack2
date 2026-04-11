@@ -18,8 +18,13 @@ let imageApproved = false;
 let currentSource = "upload";
 let paymentVerified = false;
 let verifiedDashTxId = "";
+let liveAutoVerifyEnabled = false;
+let liveVerifyAttempt = 0;
+let liveVerifyBusy = false;
 const MAX_CAPTURE_WIDTH = 512;
 const TARGET_IMAGE_BYTES = 120 * 1024;
+const VERIFY_CAPTURE_MAX_WIDTH = 960;
+const VERIFY_CAPTURE_QUALITY = 0.92;
 const ALLOWED_CONDITIONS = ["Excellent", "Good", "Fair", "Used", "New"];
 const ALLOWED_MATERIALS = [
   "Lambskin",
@@ -178,36 +183,55 @@ async function verifyDashPayment() {
   }
 }
 
-function compressImageFromSource(sourceEl, sourceWidth, sourceHeight) {
+function captureImageDataFromSource(sourceEl, sourceWidth, sourceHeight, options = {}) {
   const canvas = document.getElementById("canvas");
   const ctx = canvas.getContext("2d");
-  let scale = Math.min(1, MAX_CAPTURE_WIDTH / sourceWidth);
-  let quality = 0.7;
+  const maxWidth = Number(options.maxWidth || MAX_CAPTURE_WIDTH);
+  const initialQuality = Number(options.initialQuality || 0.7);
+  const targetBytes = Number.isFinite(options.targetBytes) ? options.targetBytes : null;
+  const minWidth = Number(options.minWidth || 320);
+  const minHeight = Number(options.minHeight || 180);
+
+  let scale = Math.min(1, maxWidth / sourceWidth);
+  let quality = initialQuality;
   let targetWidth = Math.max(1, Math.floor(sourceWidth * scale));
   let targetHeight = Math.max(1, Math.floor(sourceHeight * scale));
 
   canvas.width = targetWidth;
   canvas.height = targetHeight;
   ctx.drawImage(sourceEl, 0, 0, targetWidth, targetHeight);
-  capturedImageData = canvas.toDataURL("image/jpeg", quality);
+  let imageData = canvas.toDataURL("image/jpeg", quality);
 
-  let estimatedBytes = Math.floor(capturedImageData.length * 0.75);
-  while (estimatedBytes > TARGET_IMAGE_BYTES && (quality > 0.4 || targetWidth > 320)) {
+  let estimatedBytes = Math.floor(imageData.length * 0.75);
+  while (targetBytes !== null && estimatedBytes > targetBytes && (quality > 0.4 || targetWidth > minWidth)) {
     if (quality > 0.4) {
       quality -= 0.1;
     } else {
-      targetWidth = Math.max(320, Math.floor(targetWidth * 0.9));
-      targetHeight = Math.max(180, Math.floor(targetHeight * 0.9));
+      targetWidth = Math.max(minWidth, Math.floor(targetWidth * 0.9));
+      targetHeight = Math.max(minHeight, Math.floor(targetHeight * 0.9));
       canvas.width = targetWidth;
       canvas.height = targetHeight;
       ctx.drawImage(sourceEl, 0, 0, targetWidth, targetHeight);
     }
 
-    capturedImageData = canvas.toDataURL("image/jpeg", quality);
-    estimatedBytes = Math.floor(capturedImageData.length * 0.75);
+    imageData = canvas.toDataURL("image/jpeg", quality);
+    estimatedBytes = Math.floor(imageData.length * 0.75);
   }
 
-  return { targetWidth, targetHeight, quality, estimatedBytes };
+  return { imageData, targetWidth, targetHeight, quality, estimatedBytes };
+}
+
+function compressImageFromSource(sourceEl, sourceWidth, sourceHeight) {
+  const result = captureImageDataFromSource(sourceEl, sourceWidth, sourceHeight, {
+    maxWidth: MAX_CAPTURE_WIDTH,
+    initialQuality: 0.7,
+    targetBytes: TARGET_IMAGE_BYTES,
+    minWidth: 320,
+    minHeight: 180
+  });
+
+  capturedImageData = result.imageData;
+  return result;
 }
 
 function updateCameraStatus(message, type) {
@@ -217,6 +241,179 @@ function updateCameraStatus(message, type) {
     type === "error" ? "#ef4444" :
     type === "success" ? "#10b981" :
     "#94a3b8";
+}
+
+function updateVerificationBadge(text, tone = "info", visible = true) {
+  const badge = document.getElementById("verifyBadge");
+  if (!badge) {
+    return;
+  }
+
+  if (!visible) {
+    badge.style.display = "none";
+    return;
+  }
+
+  badge.style.display = "inline-flex";
+  badge.textContent = text;
+  badge.className = "verify-badge";
+  if (tone === "success") {
+    badge.classList.add("badge-success");
+  } else if (tone === "error") {
+    badge.classList.add("badge-error");
+  } else {
+    badge.classList.add("badge-info");
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getCameraResolutionSummary(videoEl) {
+  if (!stream) {
+    return "";
+  }
+
+  const track = stream.getVideoTracks()[0];
+  if (!track) {
+    return "";
+  }
+
+  const settings = track.getSettings ? track.getSettings() : {};
+  const configuredWidth = settings?.width;
+  const configuredHeight = settings?.height;
+  const frameWidth = videoEl?.videoWidth;
+  const frameHeight = videoEl?.videoHeight;
+
+  const configured = configuredWidth && configuredHeight
+    ? `${configuredWidth}x${configuredHeight}`
+    : "unknown";
+  const frame = frameWidth && frameHeight
+    ? `${frameWidth}x${frameHeight}`
+    : "unknown";
+
+  return `Camera stream: ${configured} | Video frame: ${frame}`;
+}
+
+function classifyVerifyFailure(result) {
+  const message = String(result?.message || result?.data?.reason || result?.data?.error || "");
+  const normalized = message.toLowerCase();
+  if (normalized.includes("ai-generated") || normalized.includes("synthetic")) {
+    return "ai";
+  }
+  if (normalized.includes("handbag") || normalized.includes("gatekeeper") || normalized.includes("no bag")) {
+    return "bag";
+  }
+  return "unknown";
+}
+
+async function verifyImageData(imageData) {
+  const blob = await (await fetch(imageData)).blob();
+  const formData = new FormData();
+  formData.append("file", blob, "capture.jpg");
+
+  const response = await fetch("http://127.0.0.1:8000/verify", {
+    method: "POST",
+    body: formData
+  });
+
+  if (!response.ok) {
+    let detail = `Verifier request failed with status ${response.status}`;
+    try {
+      const errorPayload = await response.json();
+      detail = errorPayload?.detail || errorPayload?.message || detail;
+    } catch {
+      // Keep default detail.
+    }
+    throw new Error(detail);
+  }
+
+  const result = await response.json();
+  const approved = result?.status === "success";
+  const failureType = approved ? null : classifyVerifyFailure(result);
+  return { approved, failureType, result };
+}
+
+async function runLiveAutoVerification() {
+  const video = document.getElementById("videoStream");
+  if (!video) {
+    return;
+  }
+
+  while (liveAutoVerifyEnabled && stream) {
+    if (liveVerifyBusy) {
+      await sleep(250);
+      continue;
+    }
+
+    if (!video.videoWidth || !video.videoHeight) {
+      updateVerificationBadge("Phase: camera warmup", "info", true);
+      updateCameraStatus("Warming up camera feed...", "info");
+      await sleep(500);
+      continue;
+    }
+
+    await sleep(2000);
+    if (!liveAutoVerifyEnabled || !stream) {
+      return;
+    }
+
+    liveVerifyBusy = true;
+    liveVerifyAttempt += 1;
+
+    try {
+      updateVerificationBadge("Phase: bag verifier", "info", true);
+      updateCameraStatus(`Checking bag verifier (attempt ${liveVerifyAttempt})...`, "info");
+      const verificationFrame = captureImageDataFromSource(video, video.videoWidth, video.videoHeight, {
+        maxWidth: VERIFY_CAPTURE_MAX_WIDTH,
+        initialQuality: VERIFY_CAPTURE_QUALITY,
+        targetBytes: null,
+        minWidth: 480,
+        minHeight: 270
+      });
+      const { approved, failureType, result } = await verifyImageData(verificationFrame.imageData);
+
+      if (!liveAutoVerifyEnabled || !stream) {
+        return;
+      }
+
+      if (approved) {
+        updateVerificationBadge("Phase: approved", "success", true);
+        imageApproved = true;
+        compressImageFromSource(video, video.videoWidth, video.videoHeight);
+        document.getElementById("capturedImage").src = capturedImageData;
+        document.getElementById("capturedImage").style.display = "block";
+        document.getElementById("approveBtn").style.display = "inline-block";
+        document.getElementById("approveBtn").textContent = "Approved ✓";
+        document.getElementById("clearBtn").style.display = "inline-block";
+        const approxKB = Math.round((capturedImageData.length * 0.75) / 1024);
+        document.getElementById("imagePreview").textContent = `Auto-approved from live feed (~${approxKB}KB).`;
+        updateCameraStatus("Image approved and captured automatically. You can mint now.", "success");
+        liveAutoVerifyEnabled = false;
+        stopCamera();
+        return;
+      }
+
+      if (failureType === "bag") {
+        updateVerificationBadge("Phase: bag verifier retry", "info", true);
+        updateCameraStatus("No handbag detected yet. Retrying in 2 seconds while camera stays live...", "info");
+      } else if (failureType === "ai") {
+        updateVerificationBadge("Phase: ai checker retry", "error", true);
+        const reason = result?.message || result?.data?.reason || "AI checker flagged this frame.";
+        updateCameraStatus(`${reason} Retrying in 2 seconds...`, "error");
+      } else {
+        updateVerificationBadge("Phase: verification retry", "error", true);
+        const reason = result?.message || result?.data?.error || "Verification failed.";
+        updateCameraStatus(`${reason} Retrying in 2 seconds...`, "error");
+      }
+    } catch (err) {
+      updateVerificationBadge("Phase: verifier unavailable", "error", true);
+      updateCameraStatus(`Verifier unavailable: ${err.message || String(err)}. Retrying in 2 seconds...`, "error");
+    } finally {
+      liveVerifyBusy = false;
+    }
+  }
 }
 
 function switchImageSource(source) {
@@ -237,13 +434,15 @@ function switchImageSource(source) {
     uploadModeBtn.classList.add("active");
     cameraModeBtn.classList.remove("active");
     stopCamera();
+    updateVerificationBadge("Phase: idle", "info", false);
     updateCameraStatus("Upload an image, then approve it before minting.", "info");
   } else {
     uploadPanel.classList.add("hidden");
     cameraPanel.classList.remove("hidden");
     uploadModeBtn.classList.remove("active");
     cameraModeBtn.classList.add("active");
-    updateCameraStatus("Start camera, capture an image, then approve it.", "info");
+    updateVerificationBadge("Phase: ready", "info", true);
+    updateCameraStatus("Start camera. We will auto-check and auto-capture once approved.", "info");
     startCamera();
   }
 }
@@ -291,6 +490,7 @@ function handleImageUpload(event) {
 
 async function startCamera() {
   try {
+    updateVerificationBadge("Phase: camera starting", "info", true);
     updateCameraStatus("Requesting camera access...", "info");
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
@@ -308,15 +508,34 @@ async function startCamera() {
       video.play().catch(() => {
         updateCameraStatus("Camera opened, but playback was blocked. Try again.", "error");
       });
+
+      const resolutionSummary = getCameraResolutionSummary(video);
+      if (resolutionSummary) {
+        document.getElementById("imagePreview").textContent = resolutionSummary;
+        console.log(`[camera] ${resolutionSummary}`);
+      }
     };
 
     document.getElementById("startCameraBtn").style.display = "none";
     document.getElementById("backBtn").style.display = "inline-flex";
-    document.getElementById("captureBtn").style.display = "inline-block";
+    document.getElementById("captureBtn").style.display = "none";
     document.getElementById("stopCameraBtn").style.display = "inline-block";
+    document.getElementById("approveBtn").style.display = "none";
 
-    updateCameraStatus("Camera is live. Capture an image to continue.", "success");
+    liveAutoVerifyEnabled = true;
+    liveVerifyAttempt = 0;
+    runLiveAutoVerification();
+
+    updateVerificationBadge("Phase: live checks running", "info", true);
+    updateCameraStatus("Camera is live. Auto-checking bag verifier and AI checker every 2 seconds...", "success");
+
+    const immediateResolutionSummary = getCameraResolutionSummary(video);
+    if (immediateResolutionSummary) {
+      document.getElementById("imagePreview").textContent = immediateResolutionSummary;
+      console.log(`[camera] ${immediateResolutionSummary}`);
+    }
   } catch (err) {
+    updateVerificationBadge("Phase: camera error", "error", true);
     updateCameraStatus(`Camera error: ${err.message}.`, "error");
   }
 }
@@ -341,6 +560,7 @@ function captureFromCamera() {
   document.getElementById("approveBtn").textContent = "Approve Image";
   imageApproved = false;
 
+  liveAutoVerifyEnabled = false;
   stopCamera();
   document.getElementById("startCameraBtn").style.display = "none";
 
@@ -351,6 +571,9 @@ function captureFromCamera() {
 }
 
 function stopCamera() {
+  liveAutoVerifyEnabled = false;
+  updateVerificationBadge("Phase: stopped", "info", true);
+
   if (stream) {
     stream.getTracks().forEach(track => track.stop());
     stream = null;
@@ -417,33 +640,28 @@ async function approveImage() {
   }
 
   try {
-    const blob = await (await fetch(capturedImageData)).blob();
-    const formData = new FormData();
-    formData.append("file", blob, "capture.jpg");
-
-    const response = await fetch("http://127.0.0.1:8000/verify", {
-      method: "POST",
-      body: formData
-    });
-
-    if (response.ok) {
-      const result = await response.json();
-      if (result.status === "success") {
-        imageApproved = true;
-        document.getElementById("approveBtn").textContent = "Approved ✓";
-        updateCameraStatus("Image approved. You can mint now.", "success");
-        document.getElementById("imagePreview").textContent =
-          "Verification passed. Image approved for minting.";
-        return;
-      }
-
-      updateCameraStatus("Verification failed. Please retake or upload a clearer image.", "error");
+    const { approved, result } = await verifyImageData(capturedImageData);
+    if (approved) {
+      updateVerificationBadge("Phase: approved", "success", true);
+      imageApproved = true;
+      document.getElementById("approveBtn").textContent = "Approved ✓";
+      updateCameraStatus("Image approved. You can mint now.", "success");
+      document.getElementById("imagePreview").textContent =
+        "Verification passed. Image approved for minting.";
       return;
     }
+
+    updateCameraStatus(
+      result?.message || "Verification failed. Please retake or upload a clearer image.",
+      "error"
+    );
+    updateVerificationBadge("Phase: failed", "error", true);
+    return;
   } catch {
     // fallback
   }
 
+  updateVerificationBadge("Phase: approved (fallback)", "success", true);
   imageApproved = true;
   document.getElementById("approveBtn").textContent = "Approved ✓";
   updateCameraStatus("Image approved (verifier unavailable). You can mint now.", "success");
