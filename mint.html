@@ -15,6 +15,7 @@
       <a href="index.html">HOME</a>
       <a href="marketplace.html">BROWSE</a>
       <a href="mint.html" class="active">SELL</a>
+      <a href="wallet-activity.html">WALLETS</a>
 
       <div class="nav-icons">
       <i class='bx bx-user' id="accountIcon"></i>
@@ -120,7 +121,7 @@
             <button type="button" id="uploadModeBtn" class="active" onclick="switchImageSource('upload')">Upload Image</button>
           </div>
 
-          <div id="uploadPanel" class="source-panel">
+          <div id="uploadPanel" class="source-panel hidden">
             <input id="imageInput" type="file" accept="image/*" onchange="handleImageUpload(event)" />
           </div>
 

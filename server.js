@@ -9,7 +9,7 @@ import { mintLuxuryPassport } from "./mint.js";
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 const DASH_NETWORK = (process.env.DASH_NETWORK || "testnet").toLowerCase();
 const DASH_MERCHANT_ADDRESS = process.env.DASH_MERCHANT_ADDRESS || "";
 const DASH_MIN_PAYMENT = Number(process.env.DASH_MIN_PAYMENT || "0");
@@ -22,6 +22,7 @@ const DASH_EXPLORER_BASE_URL =
 const LISTING_MODES = new Set(["fixed", "auction", "donate"]);
 const tokenListings = new Map();
 const tokenBids = new Map();
+const walletActivity = new Map();
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.static("."));
@@ -77,6 +78,30 @@ function asTokenId(value) {
 function asPositiveNumber(value) {
   const num = Number(value);
   return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function recordWalletActivity(walletId, entry) {
+  const normalizedWalletId = String(walletId || "").trim();
+  if (!normalizedWalletId) {
+    return;
+  }
+
+  const existing = walletActivity.get(normalizedWalletId) || [];
+  existing.push({
+    ...entry,
+    timestamp: new Date().toISOString()
+  });
+  walletActivity.set(normalizedWalletId, existing);
+}
+
+function getWalletActivity(walletId) {
+  const normalizedWalletId = String(walletId || "").trim();
+  if (!normalizedWalletId) {
+    return [];
+  }
+
+  const records = walletActivity.get(normalizedWalletId) || [];
+  return [...records].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
 }
 
 function normalizeListingInput(input) {
@@ -377,6 +402,19 @@ app.post("/mint", async (req, res) => {
       tokenListings.set(Number(tokenId), normalizedListing);
       tokenBids.delete(Number(tokenId));
       listingSummary = cloneListingForResponse(Number(tokenId));
+
+      if (normalizedListing.sellerWalletId) {
+        recordWalletActivity(normalizedListing.sellerWalletId, {
+          type: "listing_created",
+          tokenId: Number(tokenId),
+          bagName,
+          listingMode: normalizedListing.mode,
+          fixedPriceDash: normalizedListing.fixedPriceDash || null,
+          startBidDash: normalizedListing.startBidDash || null,
+          endsAt: normalizedListing.endsAt,
+          dashTxId
+        });
+      }
     }
 
     return res.json({
@@ -589,10 +627,47 @@ app.post("/listing/:tokenId/bid", (req, res) => {
   bids.push(bid);
   tokenBids.set(tokenId, bids);
 
+  recordWalletActivity(walletId, {
+    type: "bid_placed",
+    tokenId,
+    amountDash,
+    listingMode: listing.mode,
+    endsAt: listing.endsAt || null
+  });
+
   return res.json({
     success: true,
     tokenId,
     bid,
     listing: cloneListingForResponse(tokenId)
+  });
+});
+
+app.get("/wallet-activity/summary", (_req, res) => {
+  const wallets = Array.from(walletActivity.entries()).map(([walletId, records]) => ({
+    walletId,
+    transactionCount: records.length,
+    lastActivityAt: records.length ? records[records.length - 1].timestamp : null
+  }));
+
+  wallets.sort((a, b) => {
+    const left = a.lastActivityAt ? Date.parse(a.lastActivityAt) : 0;
+    const right = b.lastActivityAt ? Date.parse(b.lastActivityAt) : 0;
+    return right - left;
+  });
+
+  return res.json({ success: true, wallets });
+});
+
+app.get("/wallet-activity/:walletId", (req, res) => {
+  const walletId = String(req.params.walletId || "").trim();
+  if (!walletId) {
+    return res.status(400).json({ success: false, error: "walletId is required." });
+  }
+
+  return res.json({
+    success: true,
+    walletId,
+    transactions: getWalletActivity(walletId)
   });
 });

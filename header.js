@@ -4,7 +4,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (accountIcon) {
     accountIcon.addEventListener("click", () => {
-      window.location.href = "mint.html";
+      window.location.href = "wallet-activity.html";
     });
   }
 

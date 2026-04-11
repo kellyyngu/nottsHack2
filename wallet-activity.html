@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wallet Activity</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+</head>
+<body class="item-body">
+  <header class="campaign-topbar">
+    <div class="campaign-mini-brand" a href="index.html">#BAG</div>
+    <nav class="campaign-nav">
+      <a href="index.html">HOME</a>
+      <a href="marketplace.html">BROWSE</a>
+      <a href="mint.html">SELL</a>
+      <a href="wallet-activity.html" class="active">WALLETS</a>
+      <div class="nav-icons">
+        <i class='bx bx-user' id="accountIcon"></i>
+        <i class='bx bx-shopping-bag' id="cartIcon"></i>
+      </div>
+    </nav>
+  </header>
+
+  <main class="page-frame">
+    <h1 class="page-title">WALLET ACTIVITY</h1>
+    <p class="page-intro">Search by wallet ID to see temporary web-app transaction history (listings and bids).</p>
+
+    <section class="editorial-card mint-panel">
+      <label class="form-label" for="walletSearchInput">WALLET ID</label>
+      <input id="walletSearchInput" class="form-input" placeholder="Enter wallet ID" />
+      <button id="walletSearchBtn" type="button" class="secondary-pill-btn">SEARCH WALLET</button>
+      <div id="walletSearchStatus" class="status-box"></div>
+
+      <div class="mint-divider"></div>
+      <h2 style="margin-top: 0;">Known Wallet IDs</h2>
+      <div id="walletSummary" class="view-result-box show"></div>
+
+      <div class="mint-divider"></div>
+      <h2 style="margin-top: 0;">Transactions</h2>
+      <div id="walletTransactions" class="view-result-box show"></div>
+    </section>
+  </main>
+
+  <script src="wallet-activity.js"></script>
+  <script src="header.js"></script>
+</body>
+</html>
