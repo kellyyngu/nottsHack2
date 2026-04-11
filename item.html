@@ -5,19 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NFT Details</title>
   <link rel="stylesheet" href="styles.css" />
+  <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
 </head>
 <body class="item-body">
-  <header class="site-topbar">
-    <div class="site-brand-wrap">
-      <div class="site-brand">L&L</div>
-      <div class="site-subtitle">Luxury Passport Marketplace</div>
-    </div>
+ 
+    <header class="campaign-topbar">
+    <div class="campaign-mini-brand" a href="index.html">#BAG</div>
 
-    <nav class="site-nav">
-      <a href="home.html">HOME</a>
-      <a href="index.html" class="active">MARKETPLACE</a>
+    <nav class="campaign-nav">
+      <a href="index.html">HOME</a>
+      <a href="marketplace.html">BROWSE</a>
       <a href="mint.html">SELL</a>
+
+      <div class="nav-icons">
+      <i class='bx bx-user' id="accountIcon"></i>
+      <i class='bx bx-shopping-bag' id="cartIcon"></i>
+    </div>
     </nav>
+
   </header>
 
   <main class="page-frame">
@@ -25,7 +30,6 @@
       <section class="item-image-wrap editorial-card">
         <img
           id="itemImage"
-          src="https://via.placeholder.com/900x900?text=Luxury+Bag"
           alt="NFT item"
         />
       </section>
@@ -51,36 +55,7 @@
     </div>
   </main>
 
-  <script>
-    const params = new URLSearchParams(window.location.search);
-    const tokenId = params.get("id");
-
-    async function loadItem() {
-      if (!tokenId) {
-        document.getElementById("itemName").textContent = "No token selected";
-        return;
-      }
-
-      try {
-        const res = await fetch(`/read?tokenId=${encodeURIComponent(tokenId)}`);
-        const data = await res.json();
-
-        if (!res.ok || !data.success) {
-          throw new Error(data.error || "Failed to load item");
-        }
-
-        document.getElementById("itemName").textContent = data.metadata.bagName || "Untitled Bag";
-        document.getElementById("metaTokenId").textContent = tokenId;
-        document.getElementById("metaCondition").textContent = data.metadata.condition || "-";
-        document.getElementById("metaMaterial").textContent = data.metadata.material || "-";
-        document.getElementById("metaOwner").textContent = data.owner || "-";
-      } catch (err) {
-        document.getElementById("itemName").textContent = "Failed to load item";
-        document.getElementById("itemIntro").textContent = err.message || String(err);
-      }
-    }
-
-    loadItem();
-  </script>
+  <script src="item.js"></script>
+  <script src="header.js"></script>
 </body>
 </html>

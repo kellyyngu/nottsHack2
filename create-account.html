@@ -5,46 +5,48 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Create Account</title>
   <link rel="stylesheet" href="styles.css" />
+  <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
 </head>
 
 <body class="gallery-page">
-  <header class="gallery-topbar">
-    <div class="gallery-mini-brand">#BAG</div>
-    <nav class="gallery-nav">
+  <header class="campaign-topbar">
+    <div class="campaign-mini-brand" a href="index.html">#BAG</div>
+
+    <nav class="campaign-nav">
       <a href="index.html">HOME</a>
       <a href="marketplace.html">BROWSE</a>
       <a href="mint.html">SELL</a>
-      <a href="signin.html">SIGN IN</a>
+
       <div class="nav-icons">
       <i class='bx bx-user' id="accountIcon"></i>
       <i class='bx bx-shopping-bag' id="cartIcon"></i>
     </div>
     </nav>
+
   </header>
 
-  <main class="auth-shell">
-    <section class="auth-banner">
-      <h1>CREATE ACCOUNT</h1>
-    </section>
+  <main class="page-frame">
+    <h1 class="page-title">CREATE ACCOUNT</h1>
+  <p class="page-intro">
+    Join #BAG to save favorites, buy, sell, and track orders.
+  </p>
+    
 
-    <section class="auth-card">
-      <div class="auth-kicker">Join #BAG</div>
-      <p class="auth-copy">Create an account to save favorites, buy, sell, and track orders.</p>
-
+    <section class="editorial-card auth-card">
       <form class="auth-form" onsubmit="handleCreateAccount(event)">
-        <label class="auth-label" for="fullName">Full name</label>
-        <input id="fullName" class="auth-input" type="text" placeholder="Your name" required />
+        <label class="form-label" for="fullName">Full name</label>
+        <input id="fullName" class="form-input" type="text" placeholder="Your name" required />
 
-        <label class="auth-label" for="createEmail">Email</label>
-        <input id="createEmail" class="auth-input" type="email" placeholder="you@example.com" required />
+        <label class="form-label" for="createEmail">Email</label>
+        <input id="createEmail" class="form-input" type="email" placeholder="you@example.com" required />
 
-        <label class="auth-label" for="createPassword">Password</label>
-        <input id="createPassword" class="auth-input" type="password" placeholder="Create password" required />
+        <label class="form-label" for="createPassword">Password</label>
+        <input id="createPassword" class="form-input" type="password" placeholder="Create password" required />
 
-        <label class="auth-label" for="wallet">Wallet address</label>
-        <input id="wallet" class="auth-input" type="text" placeholder="Optional for Web3 checkout" />
+        <label class="form-label" for="wallet">Wallet address</label>
+        <input id="wallet" class="form-input" type="text" placeholder="Optional for Web3 checkout" />
 
-        <button class="auth-btn" type="submit">Create Account</button>
+        <button class="primary-pill-btn" type="submit">Create Account</button>
       </form>
 
       <div class="auth-status" id="createStatus"></div>
@@ -64,5 +66,7 @@
       box.textContent = "Demo account created. Hook this to your backend later.";
     }
   </script>
+
+  <script src="header.js"></script>
 </body>
 </html>

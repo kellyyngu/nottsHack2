@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cart</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+</head>
+<body class="gallery-page">
+  <header class="campaign-topbar">
+    <div class="campaign-mini-brand" a href="index.html">#BAG</div>
+
+    <nav class="campaign-nav">
+      <a href="index.html">HOME</a>
+      <a href="marketplace.html">BROWSE</a>
+      <a href="mint.html">SELL</a>
+
+      <div class="nav-icons">
+      <i class='bx bx-user' id="accountIcon"></i>
+      <i class='bx bx-shopping-bag' id="cartIcon"></i>
+    </div>
+    </nav>
+
+  </header>
+
+  <main class="page-frame">
+      <h1 class="page-title">CART</h1>
+      <p class="page-intro">
+        Review the items in your cart and proceed to secure checkout when you're ready.
+        </p>
+
+    <section class="editorial-card cart-card">
+      <div class="cart-list">
+        <article class="cart-item">
+          <img src="https://via.placeholder.com/320x420?text=Bag+1" alt="Bag 1" />
+          <div class="cart-item-info">
+            <div class="cart-item-name">Lady Dior</div>
+            <div class="cart-item-meta">Excellent • Lambskin</div>
+            <div class="cart-item-price">0.24 ETH</div>
+            <button class="small-dark-btn" type="button">Remove</button>
+          </div>
+        </article>
+
+        <article class="cart-item">
+          <img src="https://via.placeholder.com/320x420?text=Bag+2" alt="Bag 2" />
+          <div class="cart-item-info">
+            <div class="cart-item-name">Classic Flap</div>
+            <div class="cart-item-meta">Good • Caviar</div>
+            <div class="cart-item-price">0.39 ETH</div>
+            <button class="small-dark-btn" type="button">Remove</button>
+          </div>
+        </article>
+      </div>
+
+      <aside class="cart-summary">
+        <div class="summary-title">Order Summary</div>
+        <div class="summary-row"><span>Items</span><span>2</span></div>
+        <div class="summary-row"><span>Subtotal</span><span>0.63 ETH</span></div>
+        <div class="summary-row"><span>Service Fee</span><span>0.01 ETH</span></div>
+        <div class="summary-row total"><span>Total</span><span>0.64 ETH</span></div>
+
+        <a class="auth-btn summary-btn-link" href="payment.html">Proceed to Payment</a>
+      </aside>
+    </section>
+  </main>
+</body>
+</html>

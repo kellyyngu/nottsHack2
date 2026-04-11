@@ -5,28 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Payment</title>
   <link rel="stylesheet" href="styles.css" />
+  <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
 </head>
 <body class="gallery-page">
-  <header class="gallery-topbar">
-    <div class="gallery-mini-brand">#BAG</div>
-    <nav class="gallery-nav">
+  <header class="campaign-topbar">
+    <div class="campaign-mini-brand" a href="index.html">#BAG</div>
+
+    <nav class="campaign-nav">
       <a href="index.html">HOME</a>
       <a href="marketplace.html">BROWSE</a>
       <a href="mint.html">SELL</a>
-      <a href="cart.html">CART</a>
+
       <div class="nav-icons">
       <i class='bx bx-user' id="accountIcon"></i>
       <i class='bx bx-shopping-bag' id="cartIcon"></i>
     </div>
     </nav>
+
   </header>
 
-  <main class="payment-shell">
-    <section class="auth-banner">
-      <h1>PAYMENT</h1>
-    </section>
+<main class="page-frame">
+  <h1 class="page-title">PAYMENT</h1>
+  <p class="page-intro">
+    Complete your order securely and review your purchase details below.
+  </p>
 
-    <section class="payment-layout">
+  <div class="payment-layout">
       <div class="payment-panel">
         <div class="payment-title">Checkout</div>
 
@@ -63,7 +67,7 @@
         <div class="summary-row"><span>Service Fee</span><span>0.01 ETH</span></div>
         <div class="summary-row total"><span>Total</span><span>0.64 ETH</span></div>
       </aside>
-    </section>
+    </div>
   </main>
 
   <script>
@@ -74,5 +78,6 @@
       box.textContent = "Demo payment successful. Connect this to Stripe or Web3 payment later.";
     }
   </script>
+  <script src="header.js"></script>
 </body>
 </html>

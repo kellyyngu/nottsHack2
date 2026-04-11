@@ -8,20 +8,22 @@
   <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
 </head>
 <body class="market-body">
-  <div class="page-frame">
-    <header class="site-topbar">
-  <div class="site-brand-wrap">
-    <div class="site-brand">L&L</div>
-    <div class="site-subtitle">Luxury Passport Marketplace</div>
-  </div>
+      <header class="campaign-topbar">
+    <div class="campaign-mini-brand" a href="index.html">#BAG</div>
 
-  <nav class="site-nav">
-    <a href="index.html">HOME</a>
-    <a href="marketplace.html" class="active">MARKETPLACE</a>
-    <a href="mint.html">SELL</a>
-  </nav>
-</header>
+    <nav class="campaign-nav">
+      <a href="index.html">HOME</a>
+      <a href="marketplace.html" class="active">BROWSE</a>
+      <a href="mint.html">SELL</a>
 
+      <div class="nav-icons">
+      <i class='bx bx-user' id="accountIcon"></i>
+      <i class='bx bx-shopping-bag' id="cartIcon"></i>
+    </div>
+    </nav>
+
+  </header>
+<div class="page-frame">
     <section class="market-hero">
       <h1 class="page-title">GALLERY</h1>
 
@@ -56,117 +58,7 @@
       </div>
     </section>
   </div>
-
-  <script>
-    let allItems = [];
-
-    async function loadCatalog() {
-      try {
-        const res = await fetch("/catalog");
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.error || "Failed to load catalog");
-        }
-
-        allItems = data.items || [];
-        renderItems(allItems);
-      } catch (err) {
-        console.error(err);
-        document.getElementById("marketGrid").innerHTML = "";
-        document.getElementById("emptyState").style.display = "block";
-        document.getElementById("emptyState").textContent = "Failed to load marketplace.";
-      }
-    }
-
-    function formatPrice(item) {
-      if (item.listing && item.listing.active && item.listing.priceWei) {
-        return `${item.listing.priceWei} wei`;
-      }
-      return "Not listed";
-    }
-
-    function renderItems(items) {
-      const grid = document.getElementById("marketGrid");
-      const empty = document.getElementById("emptyState");
-
-      grid.innerHTML = "";
-
-      if (!items.length) {
-        empty.style.display = "block";
-        return;
-      }
-
-      empty.style.display = "none";
-
-      items.forEach((item) => {
-        const card = document.createElement("article");
-        card.className = "gallery-card";
-
-        const imageSrc =
-          item.imageURI && item.imageURI.trim() !== ""
-            ? item.imageURI
-            : "https://via.placeholder.com/420x420?text=Luxury+Bag";
-
-        card.innerHTML = `
-          <div class="gallery-meta">
-            <div class="item-category">${item.condition || "Verified Item"}</div>
-            <div class="item-header-row">
-              <h3>${item.bagName || "Untitled Bag"}</h3>
-              <span>${formatPrice(item)}</span>
-            </div>
-          </div>
-
-          <a href="item.html?id=${item.tokenId}" class="image-link">
-            <img src="${imageSrc}" alt="${item.bagName || "Luxury item"}" />
-          </a>
-
-          <div class="gallery-footer">
-            <div class="item-tags">
-              <span>${item.material || "Unknown Material"}</span>
-              <span>#${item.tokenId}</span>
-            </div>
-
-            <div class="item-actions">
-              <a href="item.html?id=${item.tokenId}" class="text-link">View</a>
-            </div>
-          </div>
-        `;
-
-        grid.appendChild(card);
-      });
-    }
-
-    function applyFilters() {
-      const search = document.getElementById("search").value.toLowerCase().trim();
-      const condition = document.getElementById("conditionFilter").value;
-      const material = document.getElementById("materialFilter").value;
-
-      const filtered = allItems.filter((item) => {
-        const name = (item.bagName || "").toLowerCase();
-        const itemCondition = item.condition || "";
-        const itemMaterial = item.material || "";
-
-        const matchesSearch =
-          name.includes(search) ||
-          String(item.tokenId).includes(search) ||
-          (item.owner || "").toLowerCase().includes(search);
-
-        const matchesCondition = !condition || itemCondition === condition;
-        const matchesMaterial = !material || itemMaterial === material;
-
-        return matchesSearch && matchesCondition && matchesMaterial;
-      });
-
-      renderItems(filtered);
-    }
-
-    document.getElementById("search").addEventListener("input", applyFilters);
-    document.getElementById("conditionFilter").addEventListener("change", applyFilters);
-    document.getElementById("materialFilter").addEventListener("change", applyFilters);
-    document.getElementById("refreshBtn").addEventListener("click", loadCatalog);
-
-    loadCatalog();
-  </script>
+<script src="marketplace.js"></script>
+<script src="header.js"></script>
 </body>
 </html>

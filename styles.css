@@ -118,7 +118,7 @@ main {
 .page-intro {
   color: var(--muted);
   font-size: 1.05rem;
-  max-width: 680px;
+  max-width: 900px;
   line-height: 1.6;
 }
 
@@ -707,8 +707,8 @@ main {
   align-items: center;
   padding: 18px 22px;
   font-family: Arial, Helvetica, sans-serif;
-  font-size: 0.8rem;
-  letter-spacing: 0.06em;
+  font-size: 1.25rem;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -1243,21 +1243,28 @@ main {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  font-size: 0.82rem;
+  font-size: 0.9rem;
+  color: #5f5a52;
 }
 
 .auth-links a {
   text-decoration: underline;
 }
 
+
 .auth-status {
   display: none;
   margin-top: 14px;
   padding: 14px 16px;
-  font-size: 0.88rem;
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 14px;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  background: #fbfaf7;
+  border: 1px solid var(--line);
+  color: #3a3a3a;
+  font-family: Arial, Helvetica, sans-serif;
 }
+
 
 .auth-status.show {
   display: block;
@@ -1383,4 +1390,18 @@ main {
   .cart-item {
     grid-template-columns: 1fr;
   }
+}
+
+.item-card-link img {
+  transition: transform 0.3s ease;
+}
+
+.item-card-link:hover img {
+  transform: scale(1.03);
+}
+
+.remove-btn {
+  width: auto !important;
+  margin-top: 0 !important;
+  padding: 8px 14px !important;
 }
