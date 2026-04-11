@@ -4,6 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { ethers } from "ethers";
 import { mintLuxuryPassport } from "./mint.js";
+import { saveBagToDash, listBagsFromDash } from "./dashStore.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -126,11 +127,28 @@ app.post("/mint", async (req, res) => {
       tokenId = null;
     }
 
+    const ownerAddress = await signer.getAddress();
+
+    const dashDoc = await saveBagToDash({
+      tokenId: String(tokenId),
+      contractAddress,
+      chainId: "31337",
+      txHash: result.hash,
+      blockNumber: result.receipt?.blockNumber ?? null,
+      ownerAddress,
+      bagName,
+      condition,
+      material,
+      imageURI,
+      mintedAt: new Date().toISOString(),
+    });    
+
     return res.json({
       success: true,
       txHash: result.hash,
       tokenId,
-      blockNumber: result.receipt?.blockNumber ?? null
+      blockNumber: result.receipt?.blockNumber ?? null,
+      dashDocumentId: dashDoc.$id,
     });
   } catch (err) {
     return res.status(500).json({
@@ -255,6 +273,15 @@ app.get("/catalog", async (req, res) => {
       }
     }
 
+    return res.json({ items });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || String(err) });
+  }
+});
+
+app.get("/catalog", async (_req, res) => {
+  try {
+    const items = await listBagsFromDash();
     return res.json({ items });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message || String(err) });
