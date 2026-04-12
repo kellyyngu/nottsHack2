@@ -33,6 +33,8 @@ Core components:
 
 ```bash
 npm install
+npm install --save-dev @nomicfoundation/hardhat-ignition
+npm install --save-dev @nomicfoundation/hardhat-ignition-ethers
 ```
 
 ## Environment Variables
@@ -56,10 +58,23 @@ You can set environment variables directly in PowerShell (or use `.env.example` 
 PowerShell example:
 
 ```powershell
-$env:RPC_URL="http://127.0.0.1:8545"
-$env:CONTRACT_ADDRESS="0xYOUR_DEPLOYED_CONTRACT"
-$env:PRIVATE_KEY="0xYOUR_PRIVATE_KEY"
-$env:PORT="3003"
+DASH_NETWORK='testnet'
+PORT=3001
+DASH_MERCHANT_ADDRESS='ygm1ssBLyWBeYUyjC5bU4r6sYtHtCBadyq'
+DASH_MIN_PAYMENT=0.001
+CONTRACT_ADDRESS=0xef014268b09F93CDffEA5D5b5668CD754a58415B
+RPC_URL=https://sepolia.base.org
+CATALOG_FROM_BLOCK=40075784
+STORAGE_CHAIN_NAME=base-sepolia
+STORAGE_CHAIN_ID=84532
+ENFORCE_STORAGE_CHAIN=true
+PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+DEVELOPER_ADDRESS=0xf372830788Adc37720321253A304c4f2A254E8D3
+AUTH_KEY_ADDRESS=0xf372830788Adc37720321253A304c4f2A254E8D3
+MINTER_ID=7efzRWNasezSmFKdGngC82cpsA3GABL9F1ms7hVhTZKA
+
+NETWORK=testnet
+PLATFORM_MNEMONIC="begin snack color clump captain high correct mass quick forget organ dish"
 ```
 
 ## Run Locally (End-to-End)
@@ -76,12 +91,16 @@ npx hardhat node
 npm run deploy:node
 ```
 
-3. Copy the deployed address and set env vars (example above).
+2. Deploy contract (in a second terminal):
+
+```bash
+npm run deploy:ignition:base-sepolia
+```
 
 4. Start backend:
 
 ```bash
-npm start
+node server.js
 ```
 
 5. Open UI:
